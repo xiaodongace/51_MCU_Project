@@ -3,6 +3,7 @@
 
 // 公共头文件
 #include "Config.h"
+#include "GPIO.h"
 
 // 这里可以放置一些公共的宏定义、类型定义、函数声明等
 

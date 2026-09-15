@@ -12,6 +12,8 @@
 
 #include	"Timer.h"
 
+extern volatile u16 system_ms;
+
 //========================================================================
 // 函数: Timer0_ISR_Handler
 // 描述: Timer0中断函数.
@@ -35,7 +37,7 @@
 void Timer1_ISR_Handler (void) interrupt TMR1_VECTOR		//进中断时已经清除标志
 {
 	// TODO: 在此处添加用户代码
-    P66 = ~P66;
+    // P66 = ~P66;
 }
 
 //========================================================================
@@ -48,7 +50,7 @@ void Timer1_ISR_Handler (void) interrupt TMR1_VECTOR		//进中断时已经清除标志
 void Timer2_ISR_Handler (void) interrupt TMR2_VECTOR		//进中断时已经清除标志
 {
 	// TODO: 在此处添加用户代码
-	P65 = ~P65;
+	// P65 = ~P65;
 }
 
 //========================================================================
@@ -61,7 +63,8 @@ void Timer2_ISR_Handler (void) interrupt TMR2_VECTOR		//进中断时已经清除标志
 void Timer3_ISR_Handler (void) interrupt TMR3_VECTOR		//进中断时已经清除标志
 {
 	// TODO: 在此处添加用户代码
-	P64 = ~P64;
+	// P64 = ~P64;
+	system_ms++; // 每 1 ms 递增系统毫秒计数器
 }
 
 //========================================================================
@@ -74,5 +77,5 @@ void Timer3_ISR_Handler (void) interrupt TMR3_VECTOR		//进中断时已经清除标志
 void Timer4_ISR_Handler (void) interrupt TMR4_VECTOR		//进中断时已经清除标志
 {
 	// TODO: 在此处添加用户代码
-	P63 = ~P63;
+	// P63 = ~P63;
 }

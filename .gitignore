@@ -13,6 +13,7 @@ Listings/
 
 # Keil 用户界面配置
 *.uvguix.*
+*.uvgui.*
 
 # 系统和编辑器文件
 .DS_Store

@@ -28,7 +28,7 @@
     <TargetOption>
       <CLK51>35000000</CLK51>
       <OPTTT>
-        <gFlags>1</gFlags>
+        <gFlags>0</gFlags>
         <BeepAtEnd>1</BeepAtEnd>
         <RunSim>1</RunSim>
         <RunTarget>0</RunTarget>
@@ -195,10 +195,18 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-<<<<<<< HEAD
       <PathWithFileName>.\App\Oscilloscope_tast.c</PathWithFileName>
       <FilenameWithoutPath>Oscilloscope_tast.c</FilenameWithoutPath>
-=======
+      <RteFlg>0</RteFlg>
+      <bShared>0</bShared>
+    </File>
+    <File>
+      <GroupNumber>2</GroupNumber>
+      <FileNumber>3</FileNumber>
+      <FileType>1</FileType>
+      <tvExp>0</tvExp>
+      <tvExpOptDlg>0</tvExpOptDlg>
+      <bDave2>0</bDave2>
       <PathWithFileName>.\App\App_NIXIE\App_NIXIE.c</PathWithFileName>
       <FilenameWithoutPath>App_NIXIE.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
@@ -206,14 +214,13 @@
     </File>
     <File>
       <GroupNumber>2</GroupNumber>
-      <FileNumber>3</FileNumber>
+      <FileNumber>4</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
       <PathWithFileName>.\App\App_Public.h</PathWithFileName>
       <FilenameWithoutPath>App_Public.h</FilenameWithoutPath>
->>>>>>> 835d216 (提交了app-nixie)
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -227,11 +234,7 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>3</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>3</FileNumber>
-=======
-      <FileNumber>4</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>5</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -243,11 +246,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>4</FileNumber>
-=======
-      <FileNumber>5</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>6</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -259,11 +258,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>5</FileNumber>
-=======
-      <FileNumber>6</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>7</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -275,11 +270,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>6</FileNumber>
-=======
-      <FileNumber>7</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>8</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -291,11 +282,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>7</FileNumber>
-=======
-      <FileNumber>8</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>9</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -307,11 +294,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>8</FileNumber>
-=======
-      <FileNumber>9</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>10</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -323,16 +306,19 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>9</FileNumber>
+      <FileNumber>11</FileNumber>
       <FileType>1</FileType>
-      <tvExp>1</tvExp>
+      <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
       <PathWithFileName>.\Driver\Oscilloscope\Oscilloscope.c</PathWithFileName>
       <FilenameWithoutPath>Oscilloscope.c</FilenameWithoutPath>
-=======
-      <FileNumber>10</FileNumber>
+      <RteFlg>0</RteFlg>
+      <bShared>0</bShared>
+    </File>
+    <File>
+      <GroupNumber>3</GroupNumber>
+      <FileNumber>12</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -344,7 +330,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-      <FileNumber>11</FileNumber>
+      <FileNumber>13</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -356,7 +342,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-      <FileNumber>12</FileNumber>
+      <FileNumber>14</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -368,7 +354,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-      <FileNumber>13</FileNumber>
+      <FileNumber>15</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -380,7 +366,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-      <FileNumber>14</FileNumber>
+      <FileNumber>16</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -392,7 +378,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-      <FileNumber>15</FileNumber>
+      <FileNumber>17</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -404,7 +390,7 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-      <FileNumber>16</FileNumber>
+      <FileNumber>18</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -416,14 +402,13 @@
     </File>
     <File>
       <GroupNumber>3</GroupNumber>
-      <FileNumber>17</FileNumber>
+      <FileNumber>19</FileNumber>
       <FileType>5</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
       <PathWithFileName>.\Driver\DHT_1\DHT1.h</PathWithFileName>
       <FilenameWithoutPath>DHT1.h</FilenameWithoutPath>
->>>>>>> 835d216 (提交了app-nixie)
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -437,11 +422,7 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>10</FileNumber>
-=======
-      <FileNumber>18</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>20</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -453,11 +434,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>11</FileNumber>
-=======
-      <FileNumber>19</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>21</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -469,11 +446,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>12</FileNumber>
-=======
-      <FileNumber>20</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>22</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -485,11 +458,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>13</FileNumber>
-=======
-      <FileNumber>21</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>23</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -501,11 +470,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>14</FileNumber>
-=======
-      <FileNumber>22</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>24</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -517,11 +482,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>15</FileNumber>
-=======
-      <FileNumber>23</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>25</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -533,11 +494,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>16</FileNumber>
-=======
-      <FileNumber>24</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>26</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -549,11 +506,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>17</FileNumber>
-=======
-      <FileNumber>25</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>27</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -565,11 +518,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>18</FileNumber>
-=======
-      <FileNumber>26</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>28</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -581,11 +530,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>19</FileNumber>
-=======
-      <FileNumber>27</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>29</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -597,11 +542,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>20</FileNumber>
-=======
-      <FileNumber>28</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>30</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -613,11 +554,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>21</FileNumber>
-=======
-      <FileNumber>29</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>31</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -629,11 +566,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>22</FileNumber>
-=======
-      <FileNumber>30</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>32</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -645,11 +578,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>23</FileNumber>
-=======
-      <FileNumber>31</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>33</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -661,11 +590,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>24</FileNumber>
-=======
-      <FileNumber>32</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>34</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -677,11 +602,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>25</FileNumber>
-=======
-      <FileNumber>33</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>35</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -701,11 +622,7 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>5</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>26</FileNumber>
-=======
-      <FileNumber>34</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>36</FileNumber>
       <FileType>2</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -717,11 +634,7 @@
     </File>
     <File>
       <GroupNumber>5</GroupNumber>
-<<<<<<< HEAD
-      <FileNumber>27</FileNumber>
-=======
-      <FileNumber>35</FileNumber>
->>>>>>> 835d216 (提交了app-nixie)
+      <FileNumber>37</FileNumber>
       <FileType>4</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>

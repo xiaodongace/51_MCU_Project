@@ -324,7 +324,11 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
+<<<<<<< HEAD
               <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope</IncludePath>
+=======
+              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\NIXIE;.\App\App_NIXIE</IncludePath>
+>>>>>>> 835d216 (提交了app-nixie)
             </VariousControls>
           </C51>
           <Ax51>
@@ -387,9 +391,20 @@
           <GroupName>App</GroupName>
           <Files>
             <File>
+<<<<<<< HEAD
               <FileName>Oscilloscope_tast.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\App\Oscilloscope_tast.c</FilePath>
+=======
+              <FileName>App_NIXIE.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_NIXIE\App_NIXIE.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Public.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Public.h</FilePath>
+>>>>>>> 835d216 (提交了app-nixie)
             </File>
           </Files>
         </Group>
@@ -427,9 +442,50 @@
               <FilePath>.\Driver\Timers\Timers.c</FilePath>
             </File>
             <File>
+<<<<<<< HEAD
               <FileName>Oscilloscope.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\Oscilloscope\Oscilloscope.c</FilePath>
+=======
+              <FileName>NIXIE.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\NIXIE\NIXIE.c</FilePath>
+            </File>
+            <File>
+              <FileName>NIXIE.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\NIXIE\NIXIE.h</FilePath>
+            </File>
+            <File>
+              <FileName>Alarmclock.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\RTC_Alarm_Clock\Alarmclock.c</FilePath>
+            </File>
+            <File>
+              <FileName>Alarmclock.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\RTC_Alarm_Clock\Alarmclock.h</FilePath>
+            </File>
+            <File>
+              <FileName>bmp.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\I2C_OLED\bmp.h</FilePath>
+            </File>
+            <File>
+              <FileName>oledfont.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\I2C_OLED\oledfont.h</FilePath>
+            </File>
+            <File>
+              <FileName>DHT1.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\DHT_1\DHT1.c</FilePath>
+            </File>
+            <File>
+              <FileName>DHT1.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\DHT_1\DHT1.h</FilePath>
+>>>>>>> 835d216 (提交了app-nixie)
             </File>
           </Files>
         </Group>

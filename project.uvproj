@@ -324,7 +324,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers</IncludePath>
+              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope</IncludePath>
             </VariousControls>
           </C51>
           <Ax51>
@@ -385,6 +385,13 @@
         </Group>
         <Group>
           <GroupName>App</GroupName>
+          <Files>
+            <File>
+              <FileName>Oscilloscope_tast.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\Oscilloscope_tast.c</FilePath>
+            </File>
+          </Files>
         </Group>
         <Group>
           <GroupName>Driver</GroupName>
@@ -418,6 +425,11 @@
               <FileName>Timers.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\Timers\Timers.c</FilePath>
+            </File>
+            <File>
+              <FileName>Oscilloscope.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Oscilloscope\Oscilloscope.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -59,11 +59,11 @@ void test_task1() _task_ Oscilloscope_tast {
 
         duty=Motro_pwm_duty(&duty_percent);
 
-        printf("duty=%.2f duty_percent=%d",duty,(int)duty_percent);
+         printf("duty=%.2f duty_percent=%d",duty,(int)duty_percent);
+ 
+         os_wait2(K_TMO, 1);
 
-        os_wait2(K_TMO, 1);
-
-    }
+     }
 
 }
 

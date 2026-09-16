@@ -12,16 +12,16 @@
 #define NIXIE_PIN_INIT() {    P4M0 &= ~0x1c; P4M1 &= ~0x1c; }
 
 // 初始化
-Nixie_init();
+void Nixie_init();
 
 // 在某一位显示数字
-Nixie_show(num, idx);
+void Nixie_show(num, idx);
 
 // 显示函数
-Nixie_display(num, idx);
+void Nixie_display(num, idx);
 
 // 扫描
-Nixie_Scan2ms();
+void Nixie_Scan2ms();
 
 #endif
 

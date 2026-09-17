@@ -1,17 +1,18 @@
 #ifndef __APP_PUBLIC_H
 #define __APP_PUBLIC_H
 
-// å…¬å…±å¤´æ–‡ä»¶
+// ¹«¹²Í·ÎÄ¼ş
 #include "Config.h"
 #include "GPIO.h"
 #include "Timers.h"
 
-// è¿™é‡Œå¯ä»¥æ”¾ç½®ä¸€äº›å…¬å…±çš„å®å®šä¹‰ã€ç±»å‹å®šä¹‰ã€å‡½æ•°å£°æ˜ç­‰
+// ÕâÀï¿ÉÒÔ·ÅÖÃÒ»Ğ©¹«¹²µÄºê¶¨Òå¡¢ÀàĞÍ¶¨Òå¡¢º¯ÊıÉùÃ÷µÈ
 #define App_Main_Task_Id            0
 #define App_RTC_Task_Id             1
 #define App_Nixie_Task_Id           2
 #define App_DHT11_Task_Id           3
 #define App_Oscilloscope_Task_Id    4
+#define Oscilloscope_show           5
 #define  TASK_BUZZER_ID	            7       
 
 #endif

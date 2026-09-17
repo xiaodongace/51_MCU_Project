@@ -8,6 +8,9 @@
 
 #define MOTOR P01
 
+//typedef struct {
+//    
+//}oscilloscope;
 extern void Oscilloscope_init();
 
 extern PWMx_Duty duty;

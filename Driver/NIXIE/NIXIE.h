@@ -23,5 +23,7 @@ void Nixie_display(num, idx);
 // ษจร่
 void Nixie_Scan2ms();
 
+void Nixie_task();
+
 #endif
 

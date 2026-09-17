@@ -1,5 +1,4 @@
 #include "NIXIE.h"
-#include "Delay.h"
 
 #define GET_BIT_VAL(byte, pos)	(byte & (1 << pos))
 
@@ -63,14 +62,16 @@ void Nixie_display(num, idx){
 		Nixie_show(a_dat, b_idx);
 }
 
+void Nixie_task(){
+		u8 i;
+		for(i = 0;i < 8;i++){
+				Nixie_display(i+1, i);
+		}
+}
+
 static u16 Nixie_change_ms = 0;
 
 // É¨Ãè
 void Nixie_Scan2ms(){
-		u16 now = Timers_GetSystemMs();
-
-		if(now - Nixie_change_ms == 2){
-				Nixie_change_ms = now;
-				return;
-		}
+		
 }

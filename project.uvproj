@@ -324,7 +324,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers</IncludePath>
+              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Buzzer</IncludePath>
             </VariousControls>
           </C51>
           <Ax51>
@@ -385,6 +385,18 @@
         </Group>
         <Group>
           <GroupName>App</GroupName>
+          <Files>
+            <File>
+              <FileName>App_Public.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Public.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Buzzer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Buzzer.c</FilePath>
+            </File>
+          </Files>
         </Group>
         <Group>
           <GroupName>Driver</GroupName>
@@ -418,6 +430,11 @@
               <FileName>Timers.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\Timers\Timers.c</FilePath>
+            </File>
+            <File>
+              <FileName>Buzzer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Buzzer\Buzzer.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -348,7 +348,7 @@
             <DataOverlaying>1</DataOverlaying>
             <OverlayString></OverlayString>
             <MiscControls></MiscControls>
-            <DisableWarningNumbers>15,16</DisableWarningNumbers>
+            <DisableWarningNumbers>15,16,17</DisableWarningNumbers>
             <LinkerCmdFile></LinkerCmdFile>
             <Assign></Assign>
             <ReserveString></ReserveString>
@@ -400,6 +400,26 @@
               <FileName>App_Oscilloscope_Task.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\App\App_Oscilloscope\App_Oscilloscope_Task.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Buzzer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Buzzer\App_Buzzer.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_oled.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App_oled.c</FilePath>
+            </File>
+            <File>
+              <FileName>App.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App.c</FilePath>
+            </File>
+            <File>
+              <FileName>App.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -491,6 +511,11 @@
               <FileType>1</FileType>
               <FilePath>.\Driver\Buzzer\Buzzer.c</FilePath>
             </File>
+            <File>
+              <FileName>LED.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\LED\LED.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -575,6 +600,11 @@
               <FileName>UART_Isr.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Lib\UART_Isr.c</FilePath>
+            </File>
+            <File>
+              <FileName>LED.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\LED\LED.c</FilePath>
             </File>
           </Files>
         </Group>

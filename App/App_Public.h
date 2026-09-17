@@ -14,6 +14,6 @@
 #define App_Oscilloscope_Task_Id    4
 #define I2C_OLED_Task_ID            5
 #define SPI_OLED_Task_ID            6
-#define  TASK_BUZZER_ID	            7       
+#define App_Buzzer_Task_Id          7       
 
 #endif

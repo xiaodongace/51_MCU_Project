@@ -1,28 +1,31 @@
 #include "App_Public.h"
 #include "Key.h"
 #include "Buzzer.h"
+#include "LED.h"
+
 
 void sys_init(void) {
-	EA = 1;			// Ê¹ÄÜÈ«¾ÖÖĞ¶Ï
-	EAXSFR();		/* À©Õ¹¼Ä´æÆ÷·ÃÎÊÊ¹ÄÜ */
+	EA = 1;			// ä½¿èƒ½å…¨å±€ä¸­æ–­
+	EAXSFR();		/* æ‰©å±•å¯„å­˜å™¨è®¿é—®ä½¿èƒ½ */
 
 	Timers_Init();
     Key_Init();
 	Buzzer_Init();
+	LED_Init();
     
     printf("==sys_init==\n");
 }
 
-// ÕâÀïº¯ÊıÃû¿ÉËæÒâ, ½¨Òé²»ÒªÊ¹ÓÃstart, »áºÍI2C.hÀïµÄStart³åÍ»
+// è¿™é‡Œå‡½æ•°åå¯éšæ„, å»ºè®®ä¸è¦ä½¿ç”¨start, ä¼šå’ŒI2C.hé‡Œçš„Startå†²çª
 void main_start() _task_ App_Main_Task_Id {
 	sys_init();
-	// ´´½¨ÈÎÎñ 1
+	// åˆ›å»ºä»»åŠ¡ 1
 	// os_create_task(1);
-	// ½áÊøÈÎÎñ 0
+	// ç»“æŸä»»åŠ¡ 0
     os_create_task(App_Oscilloscope_Task_Id);
 
-	// ´´½¨ÈÎÎñ 7 -> ·äÃùÆ÷ + Ğ¡µÆ
-    os_create_task(TASK_BUZZER_ID);
-	
+	// åˆ›å»ºä»»åŠ¡ 7 -> èœ‚é¸£å™¨ + å°ç¯
+    os_create_task(App_Buzzer_Task_Id);
+
 	os_delete_task(0);
 }

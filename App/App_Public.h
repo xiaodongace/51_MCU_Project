@@ -12,6 +12,6 @@
 #define App_Nixie_Task_Id           2
 #define App_DHT11_Task_Id           3
 #define App_Oscilloscope_Task_Id    4
-#define  TASK_BUZZER_ID	            7       
+#define App_Buzzer_Task_Id          7       
 
 #endif

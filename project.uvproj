@@ -218,12 +218,14 @@
             <Mx51P>0</Mx51P>
             <hadXRAM2>0</hadXRAM2>
             <uocXram2>0</uocXram2>
+            <hadXRAM3>0</hadXRAM3>
             <ModC2>0</ModC2>
             <ModH2>0</ModH2>
             <Mdu_R515>0</Mdu_R515>
             <Mdu_F120>0</Mdu_F120>
             <Psoc>0</Psoc>
             <hadIROM2>0</hadIROM2>
+            <hadIROM3>0</hadIROM3>
             <ModSmx2>0</ModSmx2>
             <cBanks>0</cBanks>
             <xBanks>0</xBanks>
@@ -293,6 +295,16 @@
                 <StartAddress>0x0</StartAddress>
                 <Size>0x0</Size>
               </IROM512>
+              <XRA513>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </XRA513>
+              <IROM513>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </IROM513>
             </OnChipMemories>
           </Target51Misc>
           <C51>
@@ -312,7 +324,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope;.\Driver\NIXIE;.\Driver\Uarts</IncludePath>
+              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope;.\Driver\NIXIE;.\Driver\Uarts;.\Driver\Buzzer;.\Driver\LED</IncludePath>
             </VariousControls>
           </C51>
           <Ax51>
@@ -388,6 +400,11 @@
               <FileName>App_Oscilloscope_Task.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\App\App_Oscilloscope\App_Oscilloscope_Task.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Buzzer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Buzzer\App_Buzzer.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -473,6 +490,26 @@
               <FileName>Uarts.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\Uarts\Uarts.c</FilePath>
+            </File>
+            <File>
+              <FileName>LED.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\LED\LED.c</FilePath>
+            </File>
+            <File>
+              <FileName>Buzzer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Buzzer\Buzzer.c</FilePath>
+            </File>
+            <File>
+              <FileName>Buzzer.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\Buzzer\Buzzer.h</FilePath>
+            </File>
+            <File>
+              <FileName>LED.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\LED\LED.h</FilePath>
             </File>
           </Files>
         </Group>

@@ -4,12 +4,13 @@
 #include "NVIC.h"
 #include "Switch.h"
 #include "STC8H_PWM.h"
+#include "LED.h"
 
 #define BUZZER	P00
 
 
 
-//			              C	   D    E 	 F	  G	   A	B	 C`
+//			             C	  D    E 	F	 G	  A	   B	C`
 static u16 code hz[] = {523, 587, 659, 698, 784, 880, 988, 1047};
 //	葫芦娃
 static u16 code HLW[] = {
@@ -180,22 +181,26 @@ void Buzzer_Play_Pause(u8 playing) {
         // 待暂停状态 -> 取消待暂停,继续播放
         if (buzzer_state == BUZZER_PAUSING) {
             buzzer_state = BUZZER_PLAY;
+            LED_Random();           // 取消暂停:继续闪烁
             return;
         }
         // 暂停状态 -> 从下一个音符继续播放(暂停时位置已推进到下一音)
         if (buzzer_state == BUZZER_PAUSE) {
             buzzer_state = BUZZER_PLAY;
             Buzzer_StartNote();     // 必须重装拍数:音尾暂停时 note_remain=0
+            LED_Random();           // 恢复播放:立刻亮一组,继续闪烁
             return;
         }
         // 停止状态 -> 从头播放 - 位置重置为0
         note_index = 0;
         buzzer_state = BUZZER_PLAY;
         Buzzer_StartNote();
+        LED_Random();
     } else {
         // 播放中 -> 待暂停:当前音符播完后再暂停
         if (buzzer_state != BUZZER_PLAY) return;
         buzzer_state = BUZZER_PAUSING;
+        LED_AllOff();               // 按暂停:立刻全灭
     }
 }
 

@@ -1,4 +1,6 @@
 #include "App_Public.h"
+#include "Key.h"
+#include "Buzzer.h"
 
 void sys_init(void) {
 	EA = 1;			// 使能全局中断
@@ -18,5 +20,9 @@ void main_start() _task_ App_Main_Task_Id {
 	// os_create_task(1);
 	// 结束任务 0
     os_create_task(App_Oscilloscope_Task_Id);
+
+	// 创建任务 7 -> 蜂鸣器 + 小灯
+    os_create_task(TASK_BUZZER_ID);
+	
 	os_delete_task(0);
 }

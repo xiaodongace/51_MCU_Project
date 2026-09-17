@@ -1,14 +1,10 @@
 #ifndef _OSCILLOSCOPE_H_
-
 #define _OSCILLOSCOPE_H_
 
+
+#include "App_Public.h"
 #include "STC8H_PWM.h"
-
-#include "NVIC.h"
-
-#include "GPIO.h"
-
-#include "Switch.h"
+#include "Uarts.h"
 
 #define MOTOR P01
 

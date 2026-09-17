@@ -1,15 +1,17 @@
 #include "Oscilloscope.h"
 
-static void GPIO_config(void) {
-
+static void Oscilloscope_GPIO_config(void) {
     GPIO_InitTypeDef    GPIO_InitStructure;     //结构定义
 
+    /* 初始化P01为推挽 */
     GPIO_InitStructure.Pin  = GPIO_Pin_1;       //指定要初始化的IO,
-
     GPIO_InitStructure.Mode = GPIO_OUT_PP;  //指定IO的输入或输出方式,GPIO_PullUp,GPIO_HighZ,GPIO_OUT_OD,GPIO_OUT_PP
-
     GPIO_Inilize(GPIO_P0, &GPIO_InitStructure);//初始化
 
+    /* 初始化P30 P31为准双向 */
+    GPIO_InitStructure.Pin  = GPIO_Pin_0 | GPIO_Pin_1; 
+    GPIO_InitStructure.Mode = GPIO_PullUp;
+    GPIO_Inilize(GPIO_P3, &GPIO_InitStructure);
 }
 
 #define PERIOD (MAIN_Fosc / 1000)
@@ -93,17 +95,13 @@ void    PWM_config(void)
 }
 
 void Oscilloscope_init(){
-
+    EA = 1;
     EAXSFR();
 
-    GPIO_config();
-
+    Oscilloscope_GPIO_config();
     PWM_config();
 
-    MOTOR=0;
-
-    EA=1;
-
+    MOTOR = 0;
 }
 
 PWMx_Duty duty;

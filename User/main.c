@@ -7,9 +7,9 @@ void sys_init(void) {
 	EA = 1;			// 使能全局中断
 	EAXSFR();		/* 扩展寄存器访问使能 */
 
-//	Timers_Init();
-  //  Key_Init();
-//	Buzzer_Init();
+	Timers_Init();
+  Key_Init();
+	Buzzer_Init();
 	LED_Init();
     
     printf("==sys_init==\n");
@@ -25,7 +25,7 @@ void main_start() _task_ App_Main_Task_Id {
     os_create_task(App_Oscilloscope_Task_Id);
 
 	// 创建任务 7 -> 蜂鸣器 + 小灯
-//    os_create_task(App_Buzzer_Task_Id);
+    os_create_task(App_Buzzer_Task_Id);
 	
     os_delete_task(0);
 }

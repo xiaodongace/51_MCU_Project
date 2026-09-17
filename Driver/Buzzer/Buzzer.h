@@ -1,5 +1,5 @@
-#ifndef __BUZZER_H
-#define __BUZZER_H
+#ifndef __BUZZER_H__
+#define __BUZZER_H__
 #include "App_Public.h"
 
 // 任务循环周期(RTX tick 数),与 App_Buzzer.c 里的 os_wait2 保持一致

@@ -36,8 +36,6 @@ void LED_Random(void) {
     u8 count;
     u8 i;
 
-    printf("LED_Random\n");
-
     led_seed += Timers_GetSystemMs();       // 混入系统时间,避免每次上电序列相同
     count = 2 + LED_Rand() % 5;             // 随机 2~6 个
 

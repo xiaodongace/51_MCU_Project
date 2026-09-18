@@ -73,26 +73,8 @@ static u16 note_remain  = 0;            // 当前音符剩余拍数(单位:任�
 
 // 初始化蜂鸣器引脚
 void Buzzer_GPIO(void) {
-    // 初始化串口引脚
-    P3_MODE_IO_PU(GPIO_Pin_0 | GPIO_Pin_1);
     // 初始化蜂鸣器引脚(P00, PWM5 输出)
     P0_MODE_OUT_PP(GPIO_Pin_0);
-}
-
-// 初始化串口
-void Buzzer_Uart(void) {
-    // >>> 记得添加 NVIC.c, UART.c, UART_Isr.c <<<
-    COMx_InitDefine		COMx_InitStructure;					//结构定义
-	// ================UART1  P30 P31================
-    COMx_InitStructure.UART_Mode      = UART_8bit_BRTx;	//模式, UART_ShiftRight,UART_8bit_BRTx,UART_9bit,UART_9bit_BRTx
-    COMx_InitStructure.UART_BRT_Use   = BRT_Timer1;			//选择波特率发生器, BRT_Timer1, BRT_Timer2 (注意: 串口2固定使用BRT_Timer2)
-    COMx_InitStructure.UART_BaudRate  = 115200ul;			//波特率, 一般 110 ~ 115200
-    COMx_InitStructure.UART_RxEnable  = ENABLE;				//接收允许,   ENABLE或DISABLE
-    COMx_InitStructure.BaudRateDouble = DISABLE;			//波特率加倍, ENABLE或DISABLE
-    UART_Configuration(UART1, &COMx_InitStructure);		//初始化串口1 UART1,UART2,UART3,UART4
-
-    NVIC_UART1_Init(ENABLE,Priority_1);		//中断使能, ENABLE/DISABLE; 优先级(低到高) Priority_0,Priority_1,Priority_2,Priority_3
-    UART1_SW(UART1_SW_P30_P31);		// 引脚选择, UART1_SW_P30_P31,UART1_SW_P36_P37,UART1_SW_P16_P17,UART1_SW_P43_P44
 }
 
 void Buzzer_PWM(u16 hz_value)
@@ -128,12 +110,10 @@ void Buzzer_Stop(void) {
 
 // 初始化蜂鸣器
 void Buzzer_Init(void) {
-	EA = 1;			    // 使能全局中断
 	EAXSFR();		    // 扩展寄存器访问使能
 
     Buzzer_GPIO();      // 初始化蜂鸣器引脚
     BUZZER = 0;         // 引脚先拉低,上电默认静音
-    Buzzer_Uart();      // 初始化串口
     Buzzer_PWM(1000);   // 初始化PWM5, 1000Hz
     Buzzer_Stop();      // 关闭PWM5比较输出,等待按键播放后再响
 }

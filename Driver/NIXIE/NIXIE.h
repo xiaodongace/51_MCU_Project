@@ -25,5 +25,9 @@ void Nixie_Scan2ms();
 
 void Nixie_task();
 
+// 走马灯数码管
+void Nixie_Run();
+
+
 #endif
 

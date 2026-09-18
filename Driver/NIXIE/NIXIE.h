@@ -14,6 +14,9 @@
 // 初始化
 void Nixie_init();
 
+void Nixie_Refresh(void);
+void Nixie_SetNumber(u32 number);
+
 // 在某一位显示数字
 void Nixie_show(num, idx);
 

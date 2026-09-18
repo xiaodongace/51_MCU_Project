@@ -12,6 +12,21 @@
 		NIXIE_RCK = 1;		\
 		NOP_TIME();
 
+/* 8个数码管显示的数字 */		
+volatile u8 nixie_digits[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile u8 nixie_scan_pos = 0;
+
+void Nixie_Refresh(void)
+{
+    Nixie_display(nixie_digits[nixie_scan_pos],
+                  nixie_scan_pos);
+
+    nixie_scan_pos++;
+
+    if (nixie_scan_pos >= 8) {
+        nixie_scan_pos = 0;
+    }
+}
 
 // 初始化
 void Nixie_init(){
@@ -62,11 +77,8 @@ void Nixie_display(num, idx){
 		Nixie_show(a_dat, b_idx);
 }
 
-void Nixie_task(){
-		u8 i;
-		for(i = 0;i < 8;i++){
-				Nixie_display(i+1, i);
-		}
+void Nixie_task(void)
+{
 }
 
 u8 display_buf[8] = {1,2,3,4,5,6,7,8};
@@ -121,4 +133,25 @@ void Nixie_Run() {
     if (++scan_idx >= sizeof(nixie_pos) / sizeof(nixie_pos[0])) {
         scan_idx = 0;
     }
+}
+
+/*
+	后续可以使用RTC时钟获取时间
+	u32 date_value;
+	date_value = year * 10000UL
+			+ month * 100UL
+			+ day;
+
+	Nixie_SetNumber(date_value);
+*/
+void Nixie_SetNumber(u32 number) {
+    u8 i;
+    u8 old_ea = EA;
+
+    EA = 0;
+    for (i = 0; i < 8; i++) {
+        nixie_digits[7 - i] = (u8)(number % 10UL);
+        number /= 10UL;
+    }
+    EA = old_ea;
 }

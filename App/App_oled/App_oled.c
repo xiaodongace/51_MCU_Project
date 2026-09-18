@@ -1,5 +1,5 @@
 #include "App.h"
-#include "spi_oled.h"
+#include "SPI_OLED.h"
 #include "App_Public.h"
 
 typedef struct {
@@ -15,9 +15,12 @@ menu_item_t menu_items[] = {
     {"ÊıÂë¹Ü", "Digit"},
     {"ÎÂÊª¶È", "Temp+Humid"},
     {"¼üÅÌ·äÃùÆ÷", "Keyboard-Beep"},
-};
+}; 
 
-void task_2() _task_ 2 {
+int8 count;
+u8 clear_screen = 1;
+
+void test_task5() _task_ SPI_OLED_Task_ID {
     char arr[32]="a";
     int8 i;
     SPI_OLED_Init();
@@ -35,7 +38,14 @@ void task_2() _task_ 2 {
     }
 }
 
-void test_task5() _task_ I2C_OLED_Task_ID  {
+void Clear_screen(u8 is_go_clear){
+    if(is_go_clear==1)
+        clear_screen=1;
+    os_send_signal(5);
+}
+
+void test_task6() _task_ I2C_OLED_Task_ID  {
+    os_wait2(K_TMO, 200);
     I2C_OLED_Init();
     I2C_OLED_ColorTurn(0);
     I2C_OLED_DisplayTurn(0);

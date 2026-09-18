@@ -324,7 +324,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope;.\Driver\NIXIE;.\Driver\Uarts;.\Driver\Buzzer</IncludePath>
+              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope;.\Driver\NIXIE;.\Driver\Uarts;.\Driver\Buzzer;.\Driver\LED;.\Driver\DHT_1;.\Driver\RTC_Alarm_Clock;.\App\App;.\App\App_oled</IncludePath>
             </VariousControls>
           </C51>
           <Ax51>
@@ -407,19 +407,14 @@
               <FilePath>.\App\App_Buzzer\App_Buzzer.c</FilePath>
             </File>
             <File>
-              <FileName>App_oled.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\App_oled.c</FilePath>
-            </File>
-            <File>
               <FileName>App.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\App.c</FilePath>
+              <FilePath>.\App\App\App.c</FilePath>
             </File>
             <File>
-              <FileName>App.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\App.h</FilePath>
+              <FileName>App_oled.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_oled\App_oled.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -600,11 +595,6 @@
               <FileName>UART_Isr.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Lib\UART_Isr.c</FilePath>
-            </File>
-            <File>
-              <FileName>LED.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\LED\LED.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -11,15 +11,16 @@
 #define PERIOD (MAIN_Fosc / 1000)
 
 extern int8 count;
-extern int8 temp;
 
+//oled_clear_screen
 extern u8 clear_screen;
-
+//extern u8 is_go_clear;
+//App
 extern void App_Init();
 //PWM
 extern PWMx_Duty dutyB;
 //OLED
-extern void Clear_screen(u8 is_go_clear_screen);
+extern void Clear_screen(u8 is_go_clear);
 //Oscilloscope
 extern void show_Oscilloscope();
 #endif

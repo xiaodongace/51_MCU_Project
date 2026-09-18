@@ -10,8 +10,9 @@ void sys_init(void) {
 	EA = 1;			// 使能全局中断
 	EAXSFR();		/* 扩展寄存器访问使能 */
 
+	/* 外设初始化 */
 	Timers_Init();
-  Key_Init();
+  	Key_Init();
 	Buzzer_Init();
 	LED_Init();
 	Nixie_init();

@@ -4,6 +4,7 @@
 #include "NIXIE.h"
 
 #include "Uarts.h"
+#include "LED.h"
 
 void sys_init(void) {
 	EA = 1;			// 使能全局中断
@@ -12,6 +13,7 @@ void sys_init(void) {
 	Timers_Init();
   Key_Init();
 	Buzzer_Init();
+	LED_Init();
 	Nixie_init();
 	
 	Uarts_Init(UART_USE_1);

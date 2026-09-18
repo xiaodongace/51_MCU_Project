@@ -12,7 +12,8 @@
 #define App_Nixie_Task_Id           2
 #define App_DHT11_Task_Id           3
 #define App_Oscilloscope_Task_Id    4
-#define Oscilloscope_show           5
-#define  TASK_BUZZER_ID	            7       
+#define I2C_OLED_Task_ID            5
+#define SPI_OLED_Task_ID            6
+#define App_Buzzer_Task_Id          7       
 
 #endif

@@ -601,11 +601,6 @@
               <FileType>1</FileType>
               <FilePath>.\Lib\UART_Isr.c</FilePath>
             </File>
-            <File>
-              <FileName>LED.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\LED\LED.c</FilePath>
-            </File>
           </Files>
         </Group>
         <Group>

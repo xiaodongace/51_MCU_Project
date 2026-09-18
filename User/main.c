@@ -9,7 +9,9 @@
 void sys_init(void) {
 	EA = 1;			// 使能全局中断
 	EAXSFR();		/* 扩展寄存器访问使能 */
-
+	
+	Uarts_Init(UART_USE_1);
+	
 	/* 外设初始化 */
 	Timers_Init();
   	Key_Init();
@@ -17,7 +19,6 @@ void sys_init(void) {
 	LED_Init();
 	Nixie_init();
 	
-	Uarts_Init(UART_USE_1);
     
     printf("==sys_init==\n");
 }
@@ -32,7 +33,7 @@ void main_start() _task_ App_Main_Task_Id {
 //    os_create_task(App_Oscilloscope_Task_Id);
 
 	// 创建任务 7 -> 蜂鸣器 + 小灯
-//    os_create_task(TASK_BUZZER_ID);
+//    os_create_task(App_Buzzer_Task_Id);
 	
 		
 		os_create_task(App_Nixie_Task_Id);

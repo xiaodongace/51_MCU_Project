@@ -37,9 +37,9 @@ void Nixie_show(num, idx){
 		NIXIE_out(num);
 	
 		NIXIE_out(idx);
-		
+    
 		// 锁存操作
-		RCK_ACTION();
+        RCK_ACTION();
 }
 
 u8 code LED_TABLE[] = 
@@ -58,7 +58,7 @@ u8 code LED_TABLE[] =
 void Nixie_display(num, idx){
 		u8 a_dat = LED_TABLE[num];	// 0001 0010	字母位
 		u8 b_idx = 1 << idx;					// 0010 0000	数字位 5
-	
+    
 		Nixie_show(a_dat, b_idx);
 }
 
@@ -68,6 +68,8 @@ void Nixie_task(){
 				Nixie_display(i+1, i);
 		}
 }
+
+u8 display_buf[8] = {1,2,3,4,5,6,7,8};
 
 static u16 Nixie_change_ms = 0;
 

@@ -11,6 +11,7 @@
 /*---------------------------------------------------------------------*/
 
 #include	"Timer.h"
+#include "NIXIE.h"
 
 extern volatile u16 system_ms;
 
@@ -60,12 +61,27 @@ void Timer2_ISR_Handler (void) interrupt TMR2_VECTOR		//进中断时已经清除标志
 // 返回: none.
 // 版本: V1.0, 2020-09-23
 //========================================================================
+
+u8 display_index = 0;
+
+extern u8 display_buf[8];
+
 void Timer3_ISR_Handler (void) interrupt TMR3_VECTOR		//进中断时已经清除标志
 {
 	// TODO: 在此处添加用户代码
 	// P64 = ~P64;
 	system_ms++; // 每 1 ms 递增系统毫秒计数器
+	
+	Nixie_display(display_buf[display_index],display_index);
+	
+	display_index++;
+
+	if(display_index >= 8)
+	{
+			display_index = 0;
+	}
 }
+
 
 //========================================================================
 // 函数: Timer4_ISR_Handler

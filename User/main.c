@@ -30,8 +30,9 @@ void main_start() _task_ App_Main_Task_Id {
 	// 锟斤拷锟斤拷锟斤拷锟斤拷 1
 	// os_create_task(1);
 	// 结束任务 0
-//    os_create_task( Oscilloscope_show);
-//    os_create_task(App_Oscilloscope_Task_Id);
+    os_create_task(SPI_OLED_Task_ID);
+    os_create_task(I2C_OLED_Task_ID);
+    os_create_task(App_Oscilloscope_Task_Id);
 
 	// 创建任务 7 -> 蜂鸣器 + 小灯
 	// os_create_task(App_Buzzer_Task_Id);

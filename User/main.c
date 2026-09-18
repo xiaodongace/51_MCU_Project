@@ -7,11 +7,9 @@
 #include "LED.h"
 
 void sys_init(void) {
-	EA = 1;			// 使能全局中断
+	EA = 0;			// Configure peripherals before enabling interrupts.
 	EAXSFR();		/* 扩展寄存器访问使能 */
-	
-	Uarts_Init(UART_USE_1);
-	
+
 	/* 外设初始化 */
 	Timers_Init();
   	Key_Init();
@@ -20,7 +18,10 @@ void sys_init(void) {
 	Nixie_init();
 	
     
-    printf("==sys_init==\n");
+    Uarts_Init(UART_USE_1);
+
+	EA = 1;
+	printf("==sys_init==\r\n");
 }
 
 // 这里函数名可随意, 建议不要使用start, 会和I2C.h里的Start冲突

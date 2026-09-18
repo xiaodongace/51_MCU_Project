@@ -73,8 +73,6 @@ static u16 note_remain  = 0;            // 当前音符剩余拍数(单位:任�
 
 // 初始化蜂鸣器引脚
 void Buzzer_GPIO(void) {
-    // 初始化串口引脚
-    P3_MODE_IO_PU(GPIO_Pin_0 | GPIO_Pin_1);
     // 初始化蜂鸣器引脚(P00, PWM5 输出)
     P0_MODE_OUT_PP(GPIO_Pin_0);
 }
@@ -112,7 +110,6 @@ void Buzzer_Stop(void) {
 
 // 初始化蜂鸣器
 void Buzzer_Init(void) {
-	EA = 1;			    // 使能全局中断
 	EAXSFR();		    // 扩展寄存器访问使能
 
     Buzzer_GPIO();      // 初始化蜂鸣器引脚

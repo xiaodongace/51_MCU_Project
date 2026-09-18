@@ -34,10 +34,10 @@ void main_start() _task_ App_Main_Task_Id {
 //    os_create_task(App_Oscilloscope_Task_Id);
 
 	// 创建任务 7 -> 蜂鸣器 + 小灯
-//    os_create_task(App_Buzzer_Task_Id);
+	// os_create_task(App_Buzzer_Task_Id);
 	
 		
-		os_create_task(App_Nixie_Task_Id);
+	os_create_task(App_Nixie_Task_Id);
 	
     os_delete_task(0);
 }

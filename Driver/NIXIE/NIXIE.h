@@ -31,6 +31,9 @@ void Nixie_task();
 // 走马灯数码管
 void Nixie_Run();
 
+// 关闭数码管显示
+// void Nixie_Close();
+
 
 #endif
 

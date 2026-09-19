@@ -3,16 +3,20 @@
 #include "DHT_11.h"
 #include "ADC.h"
 #include "NTC.h"
-
-void Task_DHT11() _task_ App_DHT11_Task_Id {
+#include <stdio.h>
+void App_DHT11_OLED_Task(void)_task_ App_DHT11_Task_Id {
     u16 adc_value;
 
     float humidity, temperature, vol, ntc;
     int8 rst; // rst -> result  
     char humBuf[32], tempBuf[32], volBuf[32], ntcBuf[32];
-
+    
+    EAXSFR();
+    
+    EA = 1;
+    
     I2C_OLED_Init();
-    I2C_OLED_ColorTurn(0);
+	I2C_OLED_ColorTurn(0);
     I2C_OLED_DisplayTurn(0);
     
     while(1) {
@@ -56,7 +60,7 @@ void Task_DHT11() _task_ App_DHT11_Task_Id {
             I2C_OLED_ShowChinese(0,0,0,16);
             I2C_OLED_ShowChinese(16,0,1,16);
         }
-    
+        
         os_wait2(K_TMO, 200);
     }
- }
+}

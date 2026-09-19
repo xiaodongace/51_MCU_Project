@@ -30,7 +30,7 @@ void Nixie_Refresh(void)
 
 // 初始化
 void Nixie_init(){
-		NIXIE_PIN_INIT();
+	NIXIE_PIN_INIT();
 }
 
 static void NIXIE_out(u8 dat){
@@ -161,5 +161,5 @@ void Nixie_Close() {
 	// 关闭数码管显示
 	// Nixie_show(0xFF, 0x00);
 	// 直接关闭引脚
-	NIXIE_PIN_INIT();
+	P4M0 &= ~0x1c; P4M1 |= 0x1c;
 }

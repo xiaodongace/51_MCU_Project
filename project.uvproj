@@ -324,7 +324,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope;.\Driver\NIXIE;.\Driver\Uarts;.\Driver\Buzzer;.\Driver\LED;.\Driver\DHT_1;.\Driver\RTC_Alarm_Clock;.\App\App;.\App\App_oled</IncludePath>
+              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope;.\Driver\NIXIE;.\Driver\Uarts;.\Driver\Buzzer;.\Driver\LED;.\Driver\DHT_11;.\Driver\RTC_Alarm_Clock;.\Driver\NTC;.\App\App;.\App\App_oled</IncludePath>
             </VariousControls>
           </C51>
           <Ax51>
@@ -416,6 +416,11 @@
               <FileType>1</FileType>
               <FilePath>.\App\App_oled\App_oled.c</FilePath>
             </File>
+            <File>
+              <FileName>App_DHT11_OLED.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_DHT11_OLED\App_DHT11_OLED.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -482,21 +487,6 @@
               <FilePath>.\Driver\I2C_OLED\bmp.h</FilePath>
             </File>
             <File>
-              <FileName>oledfont.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Driver\I2C_OLED\oledfont.h</FilePath>
-            </File>
-            <File>
-              <FileName>DHT1.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\DHT_1\DHT1.c</FilePath>
-            </File>
-            <File>
-              <FileName>DHT1.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Driver\DHT_1\DHT1.h</FilePath>
-            </File>
-            <File>
               <FileName>Uarts.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\Uarts\Uarts.c</FilePath>
@@ -510,6 +500,16 @@
               <FileName>LED.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\LED\LED.c</FilePath>
+            </File>
+            <File>
+              <FileName>DHT_11.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\DHT_11\DHT_11.c</FilePath>
+            </File>
+            <File>
+              <FileName>NTC.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\NTC\NTC.c</FilePath>
             </File>
           </Files>
         </Group>

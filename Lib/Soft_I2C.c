@@ -12,8 +12,8 @@
 
 #include	"Soft_I2C.h"
 
-sbit    SDA = P0^1; //定义SDA
-sbit    SCL = P0^0; //定义SCL
+sbit    SDA = P3^3; //定义SDA   【S0 改动】原为 P0^1，本项目 P0.1 是马达，必须改到 P3.3
+sbit    SCL = P3^2; //定义SCL   【S0 改动】原为 P0^0，本项目 P0.0 是蜂鸣器，必须改到 P3.2
 
 //========================================================================
 // 函数: void I2C_Delay(void)
@@ -32,7 +32,10 @@ void I2C_Delay(void) //for normal MCS51, delay (2 * dly + 4) T, for STC12Cxxxx d
 //========================================================================
 // I2C总线函数
 //========================================================================
-void I2C_Start(void)         //start the I2C, SDA High-to-low when SCL is high
+/* 【S0 改动】本文件里原名 I2C_Start / I2C_Stop，与副屏驱动 oled.c 里的
+ * 同名函数冲突（链接报 L104 MULTIPLE PUBLIC DEFINITIONS），
+ * 故加 SI2C_ 前缀。对外的 SI2C_WriteNbyte / SI2C_ReadNbyte 名字不变。 */
+void SI2C_Start(void)         //start the I2C, SDA High-to-low when SCL is high
 {
 	SDA = 1;
 	I2C_Delay();
@@ -45,7 +48,7 @@ void I2C_Start(void)         //start the I2C, SDA High-to-low when SCL is high
 }       
 
 
-void I2C_Stop(void)           //STOP the I2C, SDA Low-to-high when SCL is high
+void SI2C_Stop(void)           //STOP the I2C, SDA Low-to-high when SCL is high
 {
 	SDA = 0;
 	I2C_Delay();
@@ -145,7 +148,7 @@ u8 I2C_ReadAbyte(void)          //read A byte from I2C
 //========================================================================
 void SI2C_WriteNbyte(u8 dev_addr, u8 mem_addr, u8 *p, u8 number)  /*  DeviceAddress,WordAddress,First Data Address,Byte lenth  */
 {
-	I2C_Start();
+	SI2C_Start();
 	I2C_WriteAbyte(dev_addr);
 	I2C_Check_ACK();
 	if(!F0)                                           //F0=0,right, F0=1,error
@@ -163,7 +166,7 @@ void SI2C_WriteNbyte(u8 dev_addr, u8 mem_addr, u8 *p, u8 number)  /*  DeviceAddr
 			while(--number);
 		}
 	}
-	I2C_Stop();
+	SI2C_Stop();
 }
 
 //========================================================================
@@ -175,7 +178,7 @@ void SI2C_WriteNbyte(u8 dev_addr, u8 mem_addr, u8 *p, u8 number)  /*  DeviceAddr
 //========================================================================
 void SI2C_ReadNbyte(u8 dev_addr, u8 mem_addr, u8 *p, u8 number)  /*  DeviceAddress,WordAddress,First Data Address,Byte lenth  */
 {
-	I2C_Start();
+	SI2C_Start();
 	I2C_WriteAbyte(dev_addr);
 	I2C_Check_ACK();
 	if(!F0)
@@ -184,7 +187,7 @@ void SI2C_ReadNbyte(u8 dev_addr, u8 mem_addr, u8 *p, u8 number)  /*  DeviceAddre
 		I2C_Check_ACK();
 		if(!F0)
 		{
-			I2C_Start();
+			SI2C_Start();
 			I2C_WriteAbyte(dev_addr|1);
 			I2C_Check_ACK();
 			if(!F0)
@@ -199,5 +202,5 @@ void SI2C_ReadNbyte(u8 dev_addr, u8 mem_addr, u8 *p, u8 number)  /*  DeviceAddre
 			}
 		}
 	}
-	I2C_Stop();
+	SI2C_Stop();
 }

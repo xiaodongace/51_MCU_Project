@@ -7,100 +7,79 @@
 /* --- Web: www.STCAI.com ---------------------------------------------*/
 /* --- BBS: www.STCAIMCU.com  -----------------------------------------*/
 /* --- QQ:  800003751 -------------------------------------------------*/
-/* ????????????,??????????STC??????            */
+/* 如果要在程序中使用此代码,请在程序中注明使用了STC的资料及程序            */
 /*---------------------------------------------------------------------*/
 
 #include	"Timer.h"
-#include "NIXIE.h"
-#include "NIXIE.h"
-
-extern volatile u16 system_ms;
-static u8 refresh_div = 0;
 
 //========================================================================
-// ??: Timer0_ISR_Handler
-// ??: Timer0????.
-// ??: none.
-// ??: none.
-// ??: V1.0, 2020-09-23
+// 函数: Timer0_ISR_Handler
+// 描述: Timer0中断函数.
+// 参数: none.
+// 返回: none.
+// 版本: V1.0, 2020-09-23
 //========================================================================
-//void Timer0_ISR_Handler (void) interrupt TMR0_VECTOR		//??????????
+//void Timer0_ISR_Handler (void) interrupt TMR0_VECTOR		//进中断时已经清除标志
 //{
-//	// TODO: ?????????
+//	// TODO: 在此处添加用户代码
 //   P67 = ~P67;
 //}
 
 //========================================================================
-// ??: Timer1_ISR_Handler
-// ??: Timer1????.
-// ??: none.
-// ??: none.
-// ??: V1.0, 2020-09-23
+// 函数: Timer1_ISR_Handler
+// 描述: Timer1中断函数.
+// 参数: none.
+// 返回: none.
+// 版本: V1.0, 2020-09-23
 //========================================================================
-void Timer1_ISR_Handler (void) interrupt TMR1_VECTOR		//??????????
+void Timer1_ISR_Handler (void) interrupt TMR1_VECTOR		//进中断时已经清除标志
 {
-	// TODO: ?????????
-    // P66 = ~P66;
+	// TODO: 在此处添加用户代码
+	P66 = ~P66;
+}
+
+/* 本项目接入的两个回调 */
+extern void Nixie_Scan1ms(void);           /* Driver/NixieScan.c：每次刷一位数码管 */
+extern volatile u32 g_sysTick;             /* App/App_Public.c：1ms 系统时钟 */
+
+//========================================================================
+// 函数: Timer2_ISR_Handler
+// 描述: Timer2中断函数.
+// 参数: none.
+// 返回: none.
+// 版本: V1.0, 2020-09-23
+//========================================================================
+void Timer2_ISR_Handler (void) interrupt TMR2_VECTOR		//进中断时已经清除标志
+{
+	/* 数码管扫描：每 1ms 刷一位，8 位轮一圈 8ms = 125Hz。
+	 * 中断里只做这一件事，代码极短（约 20us）。 */
+	Nixie_Scan1ms();
 }
 
 //========================================================================
-// ??: Timer2_ISR_Handler
-// ??: Timer2????.
-// ??: none.
-// ??: none.
-// ??: V1.0, 2020-09-23
+// 函数: Timer3_ISR_Handler
+// 描述: Timer3中断函数.
+// 参数: none.
+// 返回: none.
+// 版本: V1.0, 2020-09-23
 //========================================================================
-void Timer2_ISR_Handler (void) interrupt TMR2_VECTOR		//??????????
+void Timer3_ISR_Handler (void) interrupt TMR3_VECTOR		//进中断时已经清除标志
 {
-	// TODO: ?????????
-	// P65 = ~P65;
+	/* 全项目统一的 1ms 系统时钟（《02》4.1 的"墙上的钟"）。
+	 * 中断里只自增一次，其它模块用 SysTick_Get() 读差值算时间，
+	 * 时间的推进与读取都不依赖任何等待。 */
+	g_sysTick++;
 }
 
 //========================================================================
-// ??: Timer3_ISR_Handler
-// ??: Timer3????.
-// ??: none.
-// ??: none.
-// ??: V1.0, 2020-09-23
+// 函数: Timer4_ISR_Handler
+// 描述: Timer4中断函数.
+// 参数: none.
+// 返回: none.
+// 版本: V1.0, 2020-09-23
 //========================================================================
-
-u8 display_index = 0;
-
-extern u8 display_buf[8];
-
-void Timer3_ISR_Handler (void) interrupt TMR3_VECTOR		//??????????
+void Timer4_ISR_Handler (void) interrupt TMR4_VECTOR		//进中断时已经清除标志
 {
-	// TODO: ?????????
-	// P64 = ~P64;
-	system_ms++; // ? 1 ms ?????????
-
-	refresh_div++;
-
-    if (refresh_div >= 2) {
-        refresh_div = 0;
-        Nixie_Refresh();
-    }
-	
-	// Nixie_display(display_buf[display_index],display_index);
-	
-	// display_index++;
-
-	// if(display_index >= 8)
-	// {
-	// 		display_index = 0;
-	// }
-}
-
-
-//========================================================================
-// ??: Timer4_ISR_Handler
-// ??: Timer4????.
-// ??: none.
-// ??: none.
-// ??: V1.0, 2020-09-23
-//========================================================================
-void Timer4_ISR_Handler (void) interrupt TMR4_VECTOR		//??????????
-{
-	// TODO: ?????????
-	// P63 = ~P63;
+	// TODO: 在此处添加用户代码
+	P63 = ~P63;
 }

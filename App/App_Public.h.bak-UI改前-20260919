@@ -1,0 +1,287 @@
+/*
+ * App_Public.h - App 层公共头文件（唯一入口）
+ *
+ * 约定：App 层所有模块只 include 本文件即可拿到
+ *   1) 任务 ID 宏
+ *   2) 常用库头文件
+ *   3) 全项目公共类型（设置、闹钟、事件、页面）
+ *   4) 跨模块可见的全局对象声明
+ *
+ * 不在这里放任何寄存器操作、不放硬件细节——硬件细节属于 Driver 层。
+ */
+#ifndef __APP_PUBLIC_H
+#define __APP_PUBLIC_H
+
+#include "Config.h"
+
+#include <string.h>
+#include <stdio.h>
+
+/* 常用官方库头文件：App 层大多数模块都会用到 */
+#include "GPIO.h"
+#include "NVIC.h"
+#include "Switch.h"
+#include "Delay.h"
+
+/* 时间结构体 Clock_t 由时钟芯片驱动定义，全项目统一使用它 */
+#include "PCF8563.h"
+
+/*========================================================================
+ *                              版本信息
+ *========================================================================*/
+
+#define APP_VERSION_MAJOR   1
+#define APP_VERSION_MINOR   0
+#define APP_VERSION_STR     "1.0.0"
+
+/*========================================================================
+ *                       任务 ID（RTX51 Tiny）
+ *
+ *  任务 0 是系统初始化任务，创建完其它任务后自毁。
+ *  RTX51 Tiny 的_conf_tny.A51 配置：心跳 5ms、时间片 25ms。
+ *  改这里的编号必须同步改 os_create_task() 的调用处。
+ *========================================================================*/
+
+#define TASK_MAIN       0   /* 初始化：建外设、建任务、销毁自己 */
+#define TASK_RENDER     1   /* 渲染：刷两块屏，5ms 一拍 */
+#define TASK_INPUT      2   /* 输入：按键/矩阵键/旋钮 -> 事件队列，10ms 一拍 */
+#define TASK_LOGIC      3   /* 逻辑：闹钟调度、页面栈、中断标志清理 */
+#define TASK_MUSIC      4   /* 音效：换音符、马达、小灯 */
+#define TASK_SENSOR     5   /* 采集：DHT11、NTC、写温湿度记录 */
+
+/*========================================================================
+ *                          量纲与常量
+ *========================================================================*/
+
+#define ALARM_MAX           8       /* 闹钟组数（《01》要求 8 组） */
+
+/* days 掩码：bit0=周一 … bit6=周日（本工程自定义，转 PCF8563 周值时再映射） */
+#define DAY_MON             0x01
+#define DAY_TUE             0x02
+#define DAY_WED             0x04
+#define DAY_THU             0x08
+#define DAY_FRI             0x10
+#define DAY_SAT             0x20
+#define DAY_SUN             0x40
+#define DAY_WORKDAY         (DAY_MON | DAY_TUE | DAY_WED | DAY_THU | DAY_FRI)
+#define DAY_WEEKEND         (DAY_SAT | DAY_SUN)
+#define DAY_ALL             0x7F
+#define DAY_NONE            0x00
+#define DAY_INVALID         0xFF
+
+/* 音量档位（旋钮 0-10 档） */
+#define VOLUME_MIN          0
+#define VOLUME_MAX          10
+
+/* 贪睡时长（分钟） */
+#define SNOOZE_MINUTES      9
+
+/* 空闲回主界面超时（秒） */
+#define IDLE_BACK_HOME_SEC  30
+
+/* 日出唤醒提前量（秒）：闹钟响前 10 分钟开始渐亮 */
+#define SUNRISE_LEAD_SEC    600
+/* 日出唤醒步进间隔（毫秒）：每 100ms 调一级 */
+#define SUNRISE_STEP_MS     100
+
+/* 音效/震动模式 */
+#define ALERT_RING          0       /* 蜂鸣器响铃 */
+#define ALERT_VIBRATE       1       /* 马达震动（静音闹钟） */
+
+/* 无效索引 */
+#define IDX_NONE            0xFF
+
+/*========================================================================
+ *                          公共类型
+ *========================================================================*/
+
+/*
+ * 一组闹钟。
+ * 与 PCF8563 的 Alarm_t 不同：这里是"业务闹钟"，支持任意周几组合；
+ * 硬件只有一套闹钟寄存器，由 App_Alarm.c 负责从中挑出最近的一组写进去。
+ */
+typedef struct
+{
+    u8 enable;      /* 0=关 1=开 */
+    u8 hour;        /* 0-23 */
+    u8 minute;      /* 0-59 */
+    u8 days;        /* DAY_xxx 掩码，0 表示不响（非法配置） */
+    u8 song;        /* 0=用全局设置，1..3=指定曲目 */
+} AlarmItem_t;
+
+/* 掉电保存的设置项（存 EEPROM 0 号区，与闹钟同页） */
+typedef struct
+{
+    u16 magic;          /* 校验魔数，用来判断是否首次上电 */
+    u8  version;        /* 结构版本，升级时用来兜底 */
+    u8  volume;         /* 0-10 */
+    u8  alert_mode;     /* ALERT_RING / ALERT_VIBRATE */
+    u8  song;           /* 默认曲目 0..2 */
+    u8  pomodoro_work;  /* 番茄钟工作时长（分钟） */
+    u8  pomodoro_rest;  /* 番茄钟休息时长（分钟） */
+    u8  screen_on;      /* 主屏开关 */
+    u8  snooze_min;     /* 贪睡分钟数 */
+    u8  sunrise_en;     /* 日出唤醒开关 */
+    u16 logCount;       /* 温湿度记录已写条数，用来定位写入位置（详见 App_Storage.c） */
+    u8  reserved[4];    /* 预留，保持结构尺寸对齐 */
+} Settings_t;
+
+/* 设置魔数："AL" + 版本号，用来识别全新芯片 */
+#define SETTINGS_MAGIC      0x414C
+#define SETTINGS_VERSION    1
+
+/*========================================================================
+ *                        输入事件（App_Input 生产，App 层消费）
+ *========================================================================*/
+
+#define EVT_NONE        0
+
+/* 4 个独立按键：短按 */
+#define EVT_KEY1        1
+#define EVT_KEY2        2
+#define EVT_KEY3        3
+#define EVT_KEY4        4
+/* 4 个独立按键：长按（按住 >= 2 秒，只触发一次） */
+#define EVT_KEY1_LONG   5
+#define EVT_KEY2_LONG   6
+#define EVT_KEY3_LONG   7
+#define EVT_KEY4_LONG   8
+/* 矩阵键盘：param 为 0..15（row*4+col） */
+#define EVT_MATRIX      9
+/* 旋钮：param 为当前档位 0..10 */
+#define EVT_POT         10
+
+/* 一条事件。type 取 EVT_xxx，param 附带数据（矩阵键编号 / 旋钮档位） */
+typedef struct
+{
+    u8 type;
+    u8 param;
+} Event_t;
+
+/*========================================================================
+ *                            界面页面编号
+ *
+ *  游戏掌机模式的页面编号在此预留，M2 直接往页面栈里压即可，
+ *  不需要改动页面框架本身。
+ *========================================================================*/
+
+typedef enum
+{
+    PAGE_HOME = 0,      /* 主界面：大字时间 + 日期 + 温湿度 */
+    PAGE_ALARM_LIST,    /* 闹钟列表 */
+    PAGE_ALARM_EDIT,    /* 闹钟编辑（增/改） */
+    PAGE_POMODORO,      /* 番茄钟 */
+    PAGE_SETTINGS,      /* 设置：校时、音量、屏幕开关 */
+    PAGE_RINGING,       /* 响铃界面 */
+
+    /* ---- 掌机模式预留（M2），编号从现在往后排，不占用上面 ---- */
+    PAGE_GAME_HALL,     /* 游戏大厅 */
+    PAGE_GAME_SNAKE,    /* 贪吃蛇 */
+    PAGE_GAME_BRICK,    /* 打砖块 */
+    PAGE_GAME_PLANE,    /* 飞机大战 */
+    PAGE_GAME_DAILY,    /* 每日挑战 */
+    PAGE_GAME_OVER,     /* 游戏结束/结算 */
+
+    PAGE_COUNT
+} UIPageId_t;
+
+/*========================================================================
+ *                          跨模块全局对象
+ *========================================================================*/
+
+/* 全项目统一的 1ms 系统时钟（Timer3 中断里自增，其它模块只读）
+ * 类型是 u32：u16 只能记到 65.5 秒，番茄钟 25 分钟会回绕。
+ * 时间差一律用 SysTick_Elapsed()，天然处理 u32 回绕。 */
+extern volatile u32 g_sysTick;
+
+/* 当前时间（App_Clock 每秒刷新一次） */
+extern Clock_t g_clock;
+
+/* 掉电保存的设置 */
+extern Settings_t g_settings;
+
+/* 8 组闹钟 */
+extern AlarmItem_t g_alarms[ALARM_MAX];
+
+/* 响铃状态：非 0 表示正在响铃/震动，值为正在响的闹钟下标+1 */
+extern u8 g_ringingIdx;
+
+/* 传感器最新值 */
+extern s16 g_tempX10;       /* NTC 温度 x10，如 253 表示 25.3℃ */
+extern s16 g_dhtTempX10;    /* DHT11 温度 x10 */
+extern u8  g_humi;          /* DHT11 湿度 */
+extern u8  g_humiValid;     /* DHT11 最近一次读数是否有效 */
+
+/* 读取系统时钟（毫秒） */
+u32 SysTick_Get(void);
+
+/*========================================================================
+ *        I2C 访问请求标志 —— 【2026-09-19 方案 B：全部 I2C 收进一个任务】
+ *
+ * 参考项目 demo30 的架构：**所有 I2C 访问都在同一个任务里**
+ *   （它的 I2C 显示任务里连 RTC 读取都在：`case 3: RTC_show(); break;`）
+ * 因为串行，它根本不需要总线锁 —— 也就不会有"锁竞争 → 超时强夺 →
+ * 两个任务同时往总线发字节 → 字节流错位 → 花屏/黑屏"这条链。
+ *
+ * 本工程照此改造：
+ *   TASK_LOGIC / 按键 / 串口协议 都不再直接碰 I2C，
+ *   只把下面这些标志置 1；由 TASK_RENDER 统一执行真正的 I2C 操作。
+ *========================================================================*/
+extern volatile bit g_reqClockRefresh;  /* 请求读一次时间（每秒一次） */
+extern volatile bit g_reqClockSet;      /* 请求把时间写进时钟芯片（校时） */
+extern volatile bit g_reqClockRecover;  /* 请求时钟自救（重设默认时间） */
+extern volatile bit g_reqAlarmApply;    /* 请求把硬件闹钟重写一遍 */
+extern volatile bit g_reqRtcIrq;        /* 请求处理时钟芯片中断（清标志） */
+
+/*
+ * 主界面用矩阵键盘校时的临时状态。
+ *   g_timeEntryCnt == 0 表示没在输入；每按一个数字加 1，累计到 4 位就写入芯片。
+ *   g_timeEntry 是累计出来的数字（HHMM）。
+ * 放全局是为了让 App_Display 能在副屏上回显"输到第几位了"。
+ */
+extern u16 g_timeEntry;
+extern u8  g_timeEntryCnt;
+
+/* 算时间差，自动处理 u32 回绕。用法与 Key_Scan 里的 (now - t0) 完全一致 */
+#define SysTick_Elapsed(t0)     (g_sysTick - (u32)(t0))
+
+/*========================================================================
+ *              上电进度指示（BOOT_CRUMB）—— 诊断手段
+ *
+ * 为什么需要它：真机上"三块屏都不亮、按键没反应"时，无法判断程序到底跑到哪一步。
+ * 这个宏把 8 颗小灯当成"进度条"：走到第 step 步，就点亮第 1..step 颗灯。
+ *
+ * 为什么符合规范第四节的硬要求（诊断输出不得依赖被诊断对象）：
+ *   它直接写 IO 口，不经过任何任务、不排队、不依赖任何外设初始化，
+ *   甚至不依赖 RTX51 跑起来。只要 CPU 还在执行指令，灯就会变。
+ *
+ * 读法：
+ *   亮 k 颗  = sys_init 走到第 k 步就停住了 -> 问题在第 k+1 步
+ *   亮 8 颗  = sys_init 全部走通（任务已创建）
+ *   只剩第 1 颗亮 = 任务也跑起来了（TASK_LOGIC 初始化完成）
+ *   全灭     = 卡在 sys_init 的第 1 步之前
+ *
+ * 交付正式固件时把 BOOT_CRUMB_ENABLE 改成 0 即可全部去掉。
+ *========================================================================*/
+
+#define BOOT_CRUMB_ENABLE   1
+
+#if BOOT_CRUMB_ENABLE
+#define BOOT_CRUMB(step)    Boot_Crumb(step)
+#else
+#define BOOT_CRUMB(step)
+#endif
+
+/* step: 1..8；0 表示全灭 */
+void Boot_Crumb(u8 step);
+
+/*
+ * 按键事件回声（调试用）。打开后：每收到一条按键事件，第 2 颗灯翻转一次，
+ * 并往串口打一行 [EVT]。
+ *
+ * 按键通路已经验证通过，所以默认关闭 —— 否则用户会以为"第 2 颗灯乱闪"是故障。
+ * 以后再遇到"按键没反应"时改成 1 即可。
+ */
+#define DEBUG_EVT_ECHO  0
+
+#endif

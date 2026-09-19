@@ -1,5 +1,6 @@
-#include "SPI_OLED.h"
-#include "GPIO.h"
+#include "spi_oled.h"
+#include "GPIO.h"       /* 【本项目新增】SPI 引脚驱动能力配置要用端口模式宏 */
+
 
 //void delay_ms(unsigned int ms)
 //{                         
@@ -41,7 +42,7 @@ void SPI_OLED_DisplayTurn(u8 i)
 	}
 }
 
-//开启OLED显示 
+//开启SPI_OLED显示 
 void SPI_OLED_DisPlay_On(void)
 {
 	SPI_OLED_WR_Byte(0x8D,SPI_OLED_CMD);//电荷泵使能
@@ -49,7 +50,7 @@ void SPI_OLED_DisPlay_On(void)
 	SPI_OLED_WR_Byte(0xAF,SPI_OLED_CMD);//点亮屏幕
 }
 
-//关闭OLED显示 
+//关闭SPI_OLED显示 
 void SPI_OLED_DisPlay_Off(void)
 {
 	SPI_OLED_WR_Byte(0x8D,SPI_OLED_CMD);//电荷泵使能
@@ -96,12 +97,12 @@ void SPI_OLED_Clear(void)
 	u8 i,n;
 	for(i=0;i<8;i++)
 	{
-        SPI_OLED_WR_Byte(0xb0+i,SPI_OLED_CMD);//设置页地址
-        SPI_OLED_WR_Byte(0x10,SPI_OLED_CMD);  //设置列地址的高4位
-        SPI_OLED_WR_Byte(0x00,SPI_OLED_CMD);  //设置列地址的低4位
+	 	 SPI_OLED_WR_Byte(0xb0+i,SPI_OLED_CMD);//设置页地址
+	   SPI_OLED_WR_Byte(0x10,SPI_OLED_CMD);  //设置列地址的高4位
+	   SPI_OLED_WR_Byte(0x00,SPI_OLED_CMD);  //设置列地址的低4位
 	   for(n=0;n<128;n++)
 		 {
-             SPI_OLED_WR_Byte(0x00,SPI_OLED_DATA);//清除所有数据
+			 SPI_OLED_WR_Byte(0x00,SPI_OLED_DATA);//清除所有数据
 		 }
   }
 }
@@ -123,7 +124,7 @@ void SPI_OLED_Display_128x64(u8 *dp)
 		SPI_OLED_address(0,i);
 		for(j=0;j<128;j++)
 		{
-			SPI_OLED_WR_Byte(*dp,SPI_OLED_DATA); //写数据到OLED,每写完一个8位的数据后列地址自动加1
+			SPI_OLED_WR_Byte(*dp,SPI_OLED_DATA); //写数据到SPI_OLED,每写完一个8位的数据后列地址自动加1
 			dp++;
     }
   }
@@ -138,7 +139,7 @@ void SPI_OLED_Display_16x16(u8 x,u8 y,u8 *dp)
 		SPI_OLED_address(x,y);
 		for(i=0;i<16;i++)
 		{
-			SPI_OLED_WR_Byte(*dp,SPI_OLED_DATA);  //写数据到OLED,每写完一个8位的数据后列地址自动加1
+			SPI_OLED_WR_Byte(*dp,SPI_OLED_DATA);  //写数据到SPI_OLED,每写完一个8位的数据后列地址自动加1
 			dp++;
     }
 		y++;
@@ -325,12 +326,17 @@ void SPI_OLED_Display_string_5x7(u8 x,u8 y,u8 *text)
 //x,y :起点坐标
 //num1：要显示的小数
 //len :数字的位数
-void SPI_OLED_ShowNum(u8 x,u8 y,float num1,u8 len)
+/* 本项目修正：原厂这个函数的形参是 float。
+ * C51 是模块级链接，只要本文件被链接，这个函数就会被整段链入，
+ * 于是 `num1*100` 会把整个浮点库 C51FPL.LIB（?C?FPMUL / ?C?FPDIV / ?C?CASTF ...）拉进来。
+ * 规范第二节第三层验证明确要求读 .m51 确认没有这些符号，故改为整数：
+ * 形参 num100 = 真实数值 x 100，由调用方自己乘。功能等价。 */
+void SPI_OLED_ShowNum(u8 x,u8 y,u32 num100,u8 len)
 {
 	u8 i;
 	u32 t,num;
 	x=x+len*8+8;//要显示的小数最低位的横坐标
-	num=num1*100;//将小数左移两位并转化为整数
+	num=num100;//调用方已经乘过 100
 	SPI_OLED_Display_GB2312_string(x-24,y,".");//显示小数点
 	for(i=0;i<len;i++)
 	{
@@ -354,16 +360,35 @@ void SPI_OLED_ShowNum(u8 x,u8 y,float num1,u8 len)
 	}
 }
 
-//OLED的初始化
+#include "delay.h"
+//SPI_OLED的初始化
 void SPI_OLED_Init(void)
 {
-    P1_MODE_IO_PU(GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_3 | GPIO_Pin_6);
-    P4_MODE_IO_PU(GPIO_Pin_7);
-    P5_MODE_IO_PU(GPIO_Pin_0);
-    
-	SPI_OLED_CS_Set();     // 屏幕芯片
-	SPI_OLED_ROM_CS_Set(); // 字库芯片
-	delay_ms(200);
+	/* 【本项目新增 · 针对"主屏不亮"的修复】
+	 *
+	 * 这 6 根线是软件模拟 SPI（IO 口一位一位翻转），不是硬件 SPI 外设。
+	 * 原厂驱动和 v3.1 都**没有**配置它们的端口模式，也就是说它们一直停留在
+	 * 复位默认的"准双向口"状态 —— 输出高电平靠的是内部弱上拉（约几十 kΩ）。
+	 *
+	 * 对按键那种慢信号没问题，但对 SCL 时钟线不行：
+	 * 本驱动的 SCL 由 for 循环翻转产生，周期只有几百纳秒（约 1~3MHz），
+	 * 弱上拉遇上线路电容，上升沿根本爬不到高位门限，SSD1306 就收不到有效时序。
+	 *
+	 * 所以把 5 根输出线配成推挽（强驱动）：
+	 *   P5.0 = SCLK、P1.3 = MOSI、P1.6 = DC、P4.7 = 屏片选、P1.0 = 字库片选
+	 * 留 P1.1 = MISO 不动 —— 它是从字库 IC 读数据的输入线，要保持准双向/输入。
+	 *
+	 * 说明：这与 I2C 那两条线配成开漏（P3_MODE_OUT_OD）是同一类处理，
+	 * 都属于"这个外设需要什么驱动能力"。 */
+	P5_MODE_OUT_PP(GPIO_Pin_0);                     /* SCLK  */
+	P1_MODE_OUT_PP(GPIO_Pin_0 | GPIO_Pin_3 | GPIO_Pin_6);  /* 字库CS / MOSI / DC */
+	P4_MODE_OUT_PP(GPIO_Pin_7);                     /* 屏片选 */
+
+    // CS (chip select), SS (slave selection) -> 片选
+    // 把屏幕和字库芯片的片选线拉高
+	SPI_OLED_CS_Set();
+	SPI_OLED_ROM_CS_Set();
+	os_wait2(K_TMO, 40); // 5ms * 40 = 200ms
 	
 	SPI_OLED_WR_Byte(0xAE,SPI_OLED_CMD);//--turn off oled panel
 	SPI_OLED_WR_Byte(0x00,SPI_OLED_CMD);//---set low column address

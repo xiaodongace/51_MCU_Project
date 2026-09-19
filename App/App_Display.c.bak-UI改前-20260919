@@ -1,0 +1,804 @@
+/*
+ * App_Display.c - 两块屏幕的绘制（TASK_RENDER，5ms 一拍）
+ *
+ * 只读别人的数据（g_clock / g_settings / g_alarms / 传感器全局量），不改任何人。
+ * 副屏走 I2C，访问前先申请总线锁（《02》3.3 的"走廊通行权"）。
+ */
+#include "App_Display.h"
+
+#include "spi_oled.h"       /* 主屏：SPI，带硬件字库，可显示汉字 */
+#include "I2C_OLED.h"       /* 副屏：demo30 原生驱动，自包含软件 I2C */
+#include "I2C.h"            /* I2C 底层（副屏批量写试验已回退，保留声明备用） */
+#include "App_Clock.h"
+#include "App_Input.h"   /* Input_GetPotLevel：副屏显示实时旋钮档位 */
+#include "App_Alarm.h"
+#include "App_Sensor.h"
+#include "App_Game.h"
+#include "App_Font.h"
+#include "I2C_Lock.h"
+#include "LED.h"
+
+/* 副屏驱动改用 demo30 的原生实现（Driver/I2C_OLED/I2C_OLED.c）。
+ * demo30 的这套驱动是自包含的：自带 I2C_Start/Send_Byte/I2C_WaitAck，
+ * 函数名本来就是 I2C_OLED_*，不需要任何别名包装。
+ * 【方案 B】原样照抄，不再自己接线。 */
+#include "I2C_OLED.h"
+
+
+/*------------------------------------------------------------------------
+ * 主屏版面（128 x 64，单位是"页"，1 页 = 8 像素行）
+ *
+ *   y = 0..3  大字时间  HH : MM   字模 16x32
+ *   y = 4..5  日期 + 星期         8x16（汉字来自屏幕上的字库 IC）
+ *   y = 6..7  温湿度 + 闹钟开关   8x16
+ *------------------------------------------------------------------------*/
+#define MAIN_BIG_Y      0
+#define MAIN_BIG_X0     24          /* 第 1 位数字的 x */
+#define MAIN_BIG_STEP   18          /* 每位之间隔 18 列（字宽 16） */
+#define MAIN_DATE_Y     4
+#define MAIN_ENV_Y      6
+
+/* 大字时间的 5 个位置里，第 3 个（下标 2）是冒号 */
+#define BIG_SLOT_COUNT  5
+#define BIG_COLON_SLOT  2
+
+/*------------------------------------------------------------------------
+ * 内部状态
+ *------------------------------------------------------------------------*/
+static u8 s_fullRedraw = 1;
+static UIPageId_t s_page = PAGE_HOME;
+
+/* 用于判断"内容变了没有" */
+static u8  s_lastMinute  = 0xFF;
+static u8  s_lastHour    = 0xFF;
+static u8  s_lastDay     = 0xFF;
+static u8  s_lastHumi    = 0xFF;
+static s16 s_lastTemp    = 0x7FFF;
+static u8  s_lastAlarmOn = 0xFF;
+static u8  s_lastSec     = 0xFF;
+static u8  s_lastValid   = 0xFF;
+static u16 s_envTimer    = 0;
+
+static u8 s_mainOn = 1;
+
+/* 前置声明：C51 不允许调用"后面才定义"的函数，必须先声明。 */
+static void sub_build_line3(char *buf);
+
+static u32 s_lastFullExecMs = 0;   /* 上一次真正执行整屏重画的时刻（执行点限流） */
+static u8  s_line3Dirty = 0;       /* 只重画第 4 行的请求（音量/校时输入用，很便宜） */
+
+static u16 s_dbgPoll = 0;
+static u16 s_dbgSub  = 0;
+static u16 s_dbgFull = 0;
+static u16 s_dbgHb   = 0;
+
+/*
+ * 【2026-09-18 新增 · 诊断】TASK_RENDER 活性探针。
+ *
+ * 真机现象：副屏画面"被拉宽占据整屏"，重启后画面恢复正常但**再也不更新**，
+ * 而此时矩阵键盘还能改时间（说明 TASK_LOGIC 与 I2C 总线都是活的）。
+ * 那问题就只剩一个可能：TASK_RENDER 首次画完之后不再刷新。
+ *
+ * 所以这里统计三件事，每 5 秒打一行：
+ *   poll    : Display_Poll 被调用的次数（TASK_RENDER 是否还在跑）
+ *   sub     : 副屏真正被刷新的次数（走到写字那一步没有）
+ *   full    : 整屏重画的次数
+ * 判读：
+ *   poll 不涨           -> TASK_RENDER 卡住了（或被 RTX 调度饿死）
+ *   poll 涨、sub/full 不涨 -> 走到了 Display_Poll 但没走到刷新（判据/限流的问题）
+ *   sub 涨但屏幕不动     -> 控制器寻址模式被改坏（需要控制器级恢复）
+
+/*========================================================================
+ *                          主屏（SPI）
+ *========================================================================*/
+
+/* 画一个 16x32 的大字（4 页 x 16 列） */
+static void spi_draw_digit32(u8 x, u8 y, u8 idx)
+{
+    u8 page;
+    u8 i;
+
+    for (page = 0; page < FONT_PAGES; page++)
+    {
+        SPI_OLED_address(x, (u8)(y + page));
+        for (i = 0; i < FONT_WIDTH; i++)
+        {
+            SPI_OLED_WR_Byte(DIGIT32[idx][(u16)page * FONT_WIDTH + i], SPI_OLED_DATA);
+        }
+    }
+}
+
+/* 大字时间：HH:MM。
+ * 【真机修正】原来小时 < 10 时把首位留空（消隐前导零），显示成 " 0:01"，
+ * 用户要求显示 "00:01"。现在两位数字全画。 */
+static void main_draw_bigtime(void)
+{
+    u8 hh = g_clock.hour;
+    u8 mm = g_clock.minute;
+    u8 x;
+
+    x = MAIN_BIG_X0;
+
+    spi_draw_digit32(x, MAIN_BIG_Y, (u8)(hh / 10));
+    x = (u8)(x + MAIN_BIG_STEP);
+
+    spi_draw_digit32(x, MAIN_BIG_Y, (u8)(hh % 10));
+    x = (u8)(x + MAIN_BIG_STEP);
+
+    spi_draw_digit32(x, MAIN_BIG_Y, FONT_COLON);
+    x = (u8)(x + MAIN_BIG_STEP);
+
+    spi_draw_digit32(x, MAIN_BIG_Y, (u8)(mm / 10));
+    x = (u8)(x + MAIN_BIG_STEP);
+
+    spi_draw_digit32(x, MAIN_BIG_Y, (u8)(mm % 10));
+}
+
+/* 把 32 像素高的一行清掉（重画前先擦，避免旧数字残留） */
+static void main_clear_row(u8 x, u8 cols)
+{
+    u8 page;
+    u8 i;
+
+    for (page = 0; page < FONT_PAGES; page++)
+    {
+        SPI_OLED_address(x, (u8)(MAIN_BIG_Y + page));
+        for (i = 0; i < cols; i++)
+        {
+            SPI_OLED_WR_Byte(0x00, SPI_OLED_DATA);
+        }
+    }
+}
+
+/* 星期汉字。用 switch 返回字面量，不用"字符指针数组"——
+ * 汉字在 GBK 下是 2 字节，用定宽二维数组很容易算错大小，
+ * 字面量交给编译器算长度最稳。 */
+static char *week_cn(u8 w)
+{
+    switch (w)
+    {
+    case 0: return "周日";
+    case 1: return "周一";
+    case 2: return "周二";
+    case 3: return "周三";
+    case 4: return "周四";
+    case 5: return "周五";
+    case 6: return "周六";
+    default: return "---";
+    }
+}
+
+/* 日期行：2026-09-17 周四  （汉字走屏幕上的字库 IC） */
+static void main_draw_date(void)
+{
+    char buf[32];
+
+    sprintf(buf, "%04d-%02d-%02d %s",
+            (int)g_clock.year, (int)g_clock.month, (int)g_clock.day,
+            week_cn(g_clock.week));
+
+    SPI_OLED_Display_GB2312_string(0, MAIN_DATE_Y, (u8 *)buf);
+}
+
+/* 温湿度行：T25.3C H60% ALT3 */
+static void main_draw_env(void)
+{
+    char buf[32];
+    char tbuf[16];
+    s16  t;
+    u8   i;
+    u8   cnt = 0;
+
+    t = g_tempX10;
+
+    if (t < 0)
+    {
+        t = (s16)(0 - t);
+        sprintf(tbuf, "-%d.%d", (int)(t / 10), (int)(t % 10));
+    }
+    else
+    {
+        sprintf(tbuf, "%d.%d", (int)(t / 10), (int)(t % 10));
+    }
+
+    /* 湿度无效时按《04》F 角色要求显示 "--" */
+    if (Sensor_HumiValid())
+    {
+        sprintf(buf, "T%sC H%d%%", tbuf, (int)g_humi);
+    }
+    else
+    {
+        sprintf(buf, "T%sC H--%%", tbuf);
+    }
+
+    /* 顺带统计开着几组闹钟，方便一眼看出闹钟是开着的 */
+    for (i = 0; i < ALARM_MAX; i++)
+    {
+        if (g_alarms[i].enable)
+        {
+            cnt++;
+        }
+    }
+
+    /* "ALM1" = 当前有 1 组闹钟处于开启状态。
+     * 原来写的是 "ALT1"，用户看不懂；而且整行 18 个字符(144px)超过了 128px 的屏宽，
+     * 末尾会被截掉。现在缩到 16 个字符正好占满。 */
+    sprintf(buf + strlen(buf), " ALM%d", (int)cnt);
+
+    SPI_OLED_Display_GB2312_string(0, MAIN_ENV_Y, (u8 *)buf);
+}
+
+/* 把主屏某一行的 2 页（16 像素高）整行擦掉，避免上一帧更长的字符串留尾巴 */
+static void main_clear_line(u8 y)
+{
+    u8 page;
+    u8 i;
+
+    for (page = 0; page < 2; page++)
+    {
+        SPI_OLED_address(0, (u8)(y + page));
+        for (i = 0; i < 128; i++)
+        {
+            SPI_OLED_WR_Byte(0x00, SPI_OLED_DATA);
+        }
+    }
+}
+
+/* 掌机模式的占位页。
+ * 用主屏的硬件字库画中文，证明"M2 的位置已经留好、页面框架已通"，
+ * 也顺便验证了主屏的字库链路是好的。 */
+static void main_draw_placeholder(void)
+{
+    SPI_OLED_Display_GB2312_string(32, 2, (u8 *)"掌机模式");
+    SPI_OLED_Display_GB2312_string(36, 4, (u8 *)"M2 开发中");
+    SPI_OLED_Display_GB2312_string(16, 6, (u8 *)"按KEY2返回主界面");
+}
+
+static void main_full_redraw(void)
+{
+    SPI_OLED_Clear();
+
+    if (Game_IsGamePage(s_page))
+    {
+        main_draw_placeholder();
+        return;
+    }
+
+    main_draw_bigtime();
+    main_draw_date();
+    main_draw_env();
+}
+
+/*========================================================================
+ *                          副屏（I2C，只能 ASCII）
+ *========================================================================*/
+
+/*
+ * 安全的控制器恢复序列 —— 【2026-09-18 新增 · 针对"黑屏后连重启都救不回来"】
+ *
+ * 真机现象：按键/电位器操作多了之后副屏全黑，而且**按重启按钮也亮不起来**，
+ * 只有拔插 USB（给 OLED 断电）才能恢复 ——
+ * 说明坏的不是 MCU 里的状态，而是 **OLED 控制器自己的寄存器**（MCU 重启时它一直供电）。
+ *
+ * 关键补充：只发 0xAF 是救不回来的。因为最可能被写坏的是**电荷泵使能**：
+ *     OLED_Init() 里 0xAE 之后紧跟着 0x8D 0x14（开电荷泵）；
+ *     一旦序列被打断、停在 0x8D 0x10（关电荷泵）附近，屏幕就是全黑，
+ *     此后只发 0xAF 毫无作用 —— 必须重发 0x8D 0x14 才能点亮面板。
+ *
+ * 所以这里把控制器的**全部关键配置**重发一遍，唯独：
+ *   不发 0xAE（关显示）   -> 任何时刻被打断都不会留下黑屏
+ *   不清显存              -> 已有画面不会丢
+ * 代价只有 16 次字节事务（约 2ms），所以放在每次整屏重画之前，
+ * 相当于"每次重画前先把控制器修好再写"。 */
+static void sub_safe_recover(void)
+{
+    I2C_Lock();
+    I2C_OLED_WR_Byte(0x8D, I2C_OLED_CMD);   /* 电荷泵使能 */
+    I2C_OLED_WR_Byte(0x14, I2C_OLED_CMD);   /*   开启电荷泵  <-- 黑屏救不回来的关键 */
+    I2C_OLED_WR_Byte(0xA1, I2C_OLED_CMD);   /* 段重映射 正常 */
+    I2C_OLED_WR_Byte(0xC8, I2C_OLED_CMD);   /* COM 扫描方向 正常 */
+    I2C_OLED_WR_Byte(0xA6, I2C_OLED_CMD);   /* 正常显示（非反色） */
+    I2C_OLED_WR_Byte(0xA8, I2C_OLED_CMD);   /* 复用率 */
+    I2C_OLED_WR_Byte(0x3F, I2C_OLED_CMD);   /*   1/64 duty */
+    I2C_OLED_WR_Byte(0xD3, I2C_OLED_CMD);   /* 显示偏移 */
+    I2C_OLED_WR_Byte(0x00, I2C_OLED_CMD);   /*   0 */
+    /* 【2026-09-18 补漏】下面 4 条是拿本序列和 OLED_Init() 逐条比对后补上的，
+     * 之前漏掉，导致恢复不完整（尤其是 0xDA，写坏后画面会异常）。 */
+    I2C_OLED_WR_Byte(0xD5, I2C_OLED_CMD);   /* 显示时钟分频 / 振荡频率 */
+    I2C_OLED_WR_Byte(0x80, I2C_OLED_CMD);
+    I2C_OLED_WR_Byte(0xD9, I2C_OLED_CMD);   /* 预充电周期 */
+    I2C_OLED_WR_Byte(0xF1, I2C_OLED_CMD);
+    I2C_OLED_WR_Byte(0xDA, I2C_OLED_CMD);   /* COM 引脚硬件配置  <-- 写坏会花屏/异常 */
+    I2C_OLED_WR_Byte(0x12, I2C_OLED_CMD);
+    I2C_OLED_WR_Byte(0xDB, I2C_OLED_CMD);   /* VCOMH 电平 */
+    I2C_OLED_WR_Byte(0x40, I2C_OLED_CMD);
+    I2C_OLED_WR_Byte(0x81, I2C_OLED_CMD);   /* 对比度 */
+    I2C_OLED_WR_Byte(0xCF, I2C_OLED_CMD);
+    I2C_OLED_WR_Byte(0x20, I2C_OLED_CMD);   /* 寻址模式 */
+    I2C_OLED_WR_Byte(0x02, I2C_OLED_CMD);   /*   页寻址 */
+    I2C_OLED_WR_Byte(0x40, I2C_OLED_CMD);   /* 起始行 = 0（治垂直滚动） */
+    I2C_OLED_WR_Byte(0xA4, I2C_OLED_CMD);   /* 恢复显示 RAM 内容 */
+    I2C_OLED_WR_Byte(0xAF, I2C_OLED_CMD);   /* 开显示 */
+    I2C_Unlock();
+}
+
+/* 画一行 16 像素高的 ASCII。line 取 0..3，对应页 0/2/4/6。
+ *
+ * 【2026-09-18 回退说明】
+ * 上一版我把这里改成"整页一次事务批量写"（自己拼 256 字节缓冲 + I2C_WriteNbyte(..,128)），
+ * 目的是把每行 258 次 I2C 事务降到 4 次、根治"整屏垂直滚动"。
+ * 实机结果是副屏整屏乱码、按键对副屏完全无反应 —— 说明批量写这条路径没走通，
+ * 而且很可能卡在里面（TASK_RENDER 出不来），连带主屏环境行也不再刷新。
+ *
+ * 所以回退到驱动自带的 OLED_ShowString（逐字节、已验证能正确显示），
+ * 只用总线锁保证不与读时钟交叉。垂直滚动的隐患改用"周期性整屏重画"兜底：
+ * 即使某一次被冲乱，最多 3 秒后自动恢复正确画面。 */
+static void sub_draw_line(u8 line, const char *s)
+{
+    /* 【2026-09-19 修正 · 必须固定宽度】
+     *
+     * 现在副屏的刷新粒度是"只重画变化的那一行"（照 demo30），
+     * **一次只写这一行、不做整行清屏**。如果新字符串比上一帧短，
+     * 旧内容的尾巴就会留在屏幕上：
+     *   真机现象：VOL 从 "VOL 10/10 SONG 1"(15 字) 降到 "VOL 0/10 SONG 1"(14 字) 后
+     *             显示成 "VOL 0/10 SONG 11" —— 多出来的那个 1 就是上一帧的残留。
+     *
+     * demo30 的做法就是固定宽度：`sprintf(strbuff,"Duty:%6.2f%%",...)`（宽度写死）、
+     * `"Temp :    C"`（手动补空格）。这里照做：统一补到 16 个字符 = 128 列满宽，
+     * 超长则截断。这样每行写入都正好覆盖整行，不会留尾巴。 */
+    char padded[18];
+    u8 n;
+    u8 i;
+
+    n = (u8)strlen(s);
+    if (n > 16)
+    {
+        n = 16;
+    }
+    for (i = 0; i < n; i++)
+    {
+        padded[i] = s[i];
+    }
+    for (; i < 16; i++)
+    {
+        padded[i] = ' ';
+    }
+    padded[16] = '\0';
+
+    I2C_Lock();
+    I2C_OLED_ShowString(0, (u8)(line * 2), (u8 *)padded, 16);
+    I2C_Unlock();
+}
+
+static const char *page_name(UIPageId_t p)
+{
+    switch (p)
+    {
+    case PAGE_HOME:        return "CLOCK";
+    case PAGE_ALARM_LIST:  return "ALARM LIST";
+    case PAGE_ALARM_EDIT:  return "ALARM EDIT";
+    case PAGE_POMODORO:    return "POMODORO";
+    case PAGE_SETTINGS:    return "SETTINGS";
+    case PAGE_RINGING:     return "*** RING ***";
+    case PAGE_GAME_HALL:   return "GAME HALL";
+    case PAGE_GAME_SNAKE:  return "SNAKE";
+    case PAGE_GAME_BRICK:  return "BRICK";
+    case PAGE_GAME_PLANE:  return "PLANE";
+    case PAGE_GAME_DAILY:  return "DAILY";
+    case PAGE_GAME_OVER:   return "GAME OVER";
+    default:               return "?";
+    }
+}
+
+/* 星期缩写（副屏只有 ASCII，不能显示汉字） */
+static char *week_abbr(u8 w)
+{
+    switch (w)
+    {
+    case 0: return "SUN";
+    case 1: return "MON";
+    case 2: return "TUE";
+    case 3: return "WED";
+    case 4: return "THU";
+    case 5: return "FRI";
+    case 6: return "SAT";
+    default: return "---";
+    }
+}
+
+/*
+ * 副屏每秒只需要刷"时间那行"。整屏 4 行刷一遍要走 4 x 256 字节 I2C，
+ * 约 80~90ms，期间总线锁一直被占着，会把 TASK_LOGIC 读时间卡住。
+ * 只刷一行约 20ms，占用降到一个可以接受的水平。
+ */
+static void sub_draw_clock_line(void)
+{
+    char buf[24];
+
+    sprintf(buf, "%02d:%02d:%02d %s",
+            (int)g_clock.hour, (int)g_clock.minute, (int)g_clock.second,
+            week_abbr(g_clock.week));
+
+    sub_draw_line(1, buf);
+}
+
+static void sub_full_redraw(void)
+{
+    char buf[24];
+    char buf2[24];
+
+    /* 【2026-09-19 简化】按 demo30 / v3.1 的做法：整屏重画就是"先 Clear 再写字"。
+     * 原来我改成了"每行只清自己那两页的尾部"，属于自作聪明，已退回。 */
+    I2C_Lock();
+    I2C_OLED_Clear();
+    I2C_Unlock();
+
+    /* 【2026-09-18 撤掉】这里原来每次重画前都调 sub_safe_recover()，
+     * 它含 `0x8D 0x14`（反复开关电荷泵）。但真机证据表明这条路是错的：
+     *     [DISP] poll=27000 sub=0 full=14   —— I2C 负载已降到 0.1 次/秒，屏幕照样黑；
+     *     按重启按钮不亮（重启会完整重跑 OLED_Init）—— 说明控制器寄存器不是原因；
+     *     只有拔插 USB（给模块断电）才恢复     —— 说明是模块内部进了软件复位不了的状态。
+     * 所以"反复重配控制器"不但没用，反复动电荷泵还可能是在帮倒忙。
+     * 现在回到与 demo30 一致的做法：**只在开机初始化一次 OLED，运行期只写显存**。 */
+
+    sub_draw_line(0, page_name(s_page));
+
+    sprintf(buf, "%02d:%02d:%02d %s",
+            (int)g_clock.hour, (int)g_clock.minute, (int)g_clock.second,
+            week_abbr(g_clock.week));
+    sub_draw_line(1, buf);
+
+    sprintf(buf2, "%04d-%02d-%02d",
+            (int)g_clock.year, (int)g_clock.month, (int)g_clock.day);
+    sub_draw_line(2, buf2);
+
+    /* 第 4 行：按优先级显示 校时输入中 > 响铃中 > 震动模式 > 音量曲目 */
+    sub_build_line3(buf);
+    sub_draw_line(3, buf);
+}
+
+/* 把第 4 行（最后一行）的内容写进 buf。
+ * 单独抽出来是为了让"只刷一行"（s_line3Dirty）能复用同一套优先级逻辑。 */
+static void sub_build_line3(char *buf)
+{
+    if (g_timeEntryCnt > 0)
+    {
+        sprintf(buf, "SET HHMM: %04u", (unsigned)g_timeEntry);
+    }
+    else if (Alarm_IsRinging())
+    {
+        sprintf(buf, "1 STOP 2 SNOOZE");
+    }
+    else if (g_settings.alert_mode == ALERT_VIBRATE)
+    {
+        sprintf(buf, "MODE: VIBRATE");
+    }
+    else
+    {
+        /* "VOL 6/10" 而不是 "VOL 6" —— 让用户一眼知道满档是多少 */
+        /* 【2026-09-18 改为实时值 · 依据用户参考代码】
+         * 用户的 demo30/App/App_Motor.c 里是直接显示当前 ADC 换算出来的百分比
+         * （sprintf(strbuff,"Duty:%6.2f%%",(adc/2730.00)*100)），
+         * 也就是**显示电位器的实时位置**，而不是一个存下来的设置值。
+         * 这里照同样的做法：显示 Input_GetPotLevel()（当前旋钮档位）。
+         * 原来显示的是 g_settings.volume（掉电保存值，默认 6），
+         * 所以开机永远显示 6/10，与旋钮实际位置无关。 */
+        /* 【2026-09-19 照 demo30】用百分比显示，不用 "n/10" 档位。
+         * demo30/App/App_Motor.c 是这么写的：
+         *     sprintf(strbuff, "Duty:%6.2f%%", ((adc / 2730.00) * 100));
+         * 这里照同样的思路：旋钮档位 0..10 线性映射成 0..100%。
+         * %4d 保证宽度固定（0 和 100 都是 4 位），配合 sub_draw_line 的补空格不会留残影。 */
+        sprintf(buf, "VOL%4d%% SONG %d", (int)Input_GetPotLevel() * 10, (int)g_settings.song + 1);
+    }
+}
+
+/*========================================================================
+ *                              对外接口
+ *========================================================================*/
+
+/* 只请求重画副屏第 4 行（音量 / 校时输入）。很便宜，不受整屏限流约束。 */
+void Display_RequestLine3(void)
+{
+    s_line3Dirty = 1;
+}
+
+void Display_RequestFull(void)
+{
+    static u32 s_lastFullMs = 0;
+    u32 now = SysTick_Get();
+
+    /* 【2026-09-18 修正】限流从 300ms 提到 1200ms。
+     *
+     * 原来设的 300ms 是错的 —— 比一次整屏重画本身的耗时（约 350ms）还短，
+     * 等于没限住：请求照样能排满总线。
+     * 真机数据把这个错误暴露得很清楚：
+     *     [DISP] poll=1000 sub=5 full=16
+     *   poll=1000 用了 5 秒，但 5 秒内做了 16 次整屏重画
+     *   = 16 x 350ms = 5.6 秒的 I2C 传输挤进 5 秒窗口 -> 总线 100% 饱和。
+     *
+     * 总线一饱和，I2C_Lock 就抢不到，最后触发 4 秒超时强夺；
+     * 一旦强夺，两个任务会同时往总线发字节 -> 垃圾流进 SSD1306 的控制器 -> 黑屏。
+     *
+     * 现在限到 800ms：约 1.25 次/秒、总线占用约 45%；同时保证切页面按键
+     * 按下去 0.8 秒内一定能看到第一行变化（原来 1.2 秒用户会觉得"变慢了"）。 */
+    if (s_lastFullMs != 0 && SysTick_Elapsed(s_lastFullMs) < 1200U)
+    {
+        return;
+    }
+    s_lastFullMs = now;
+
+    s_fullRedraw = 1;
+}
+
+void Display_SetPage(UIPageId_t page)
+{
+    if (s_page != page)
+    {
+        s_page = page;
+        s_fullRedraw = 1;
+    }
+}
+
+void Display_MainPower(u8 on)
+{
+    if (on)
+    {
+        SPI_OLED_DisPlay_On();
+        s_fullRedraw = 1;
+    }
+    else
+    {
+        SPI_OLED_DisPlay_Off();
+    }
+    s_mainOn = on;
+}
+
+void Display_Init(void)
+{
+    /* ---- 主屏 ---- */
+    SPI_OLED_Init();
+
+    /* 【诊断】SPI 通路自检：从屏上那块晶联讯字库 IC 里按地址读回 ASCII '8' 的 16 字节点阵。
+     * 字库 IC 地址公式（驱动源码里的原文）：
+     *     Address = ((MSB-0xB0)*94 + (LSB-0xA1) + 846) * 32     汉字
+     *     Address = 0x3CF80 + (ASCII - 0x20) * 16               半角
+     * '8' = 0x38 -> 0x3CF80 + 0x18 * 16 = 0x3D100
+     *
+     * 判读：
+     *   打印出来的 16 个字节像点阵（不是全 00、也不是全 FF）-> SPI 的 SCL/MOSI/MISO/片选都通，
+     *                                                          主屏黑就只剩"屏本身/供电"这一类可能；
+     *   全 00 或全 FF                                        -> SPI 通路本身没建立起来。
+     * 这一步只读不写屏，不影响任何显示逻辑。 */
+    {
+        u8 chk[16];
+        u8 i;
+
+        SPI_OLED_get_data_from_ROM(0x03, 0xD1, 0x00, chk, 16);
+
+        printf("[SPI] ROM readback ('8'): ");
+        for (i = 0; i < 16; i++)
+        {
+            printf("%02X ", (unsigned)chk[i]);
+        }
+        printf("\r\n");
+    }
+
+    SPI_OLED_ColorTurn(0);
+    SPI_OLED_DisplayTurn(0);
+    SPI_OLED_Clear();
+
+    /* 主屏初始化完成立刻写一行测试文字：
+     * 这是"诊断手段"，输出不依赖任何任务刷新（规范第四节）——
+     * 只要屏亮且能看到这行字，就说明 SPI 线序和屏本身是好的。 */
+    SPI_OLED_Display_GB2312_string(0, 0, (u8 *)"ALARM BOOT OK");
+    printf("[SPI] main screen init done\r\n");
+
+    /* ---- 副屏 ---- */
+    I2C_Lock();
+    I2C_OLED_Init();
+    I2C_OLED_ColorTurn(0);
+    I2C_OLED_DisplayTurn(0);
+    I2C_Unlock();
+
+    /* 不在这里单独 Clear/写字：紧接着的第一次 Display_Poll 会走整屏重画，
+     * 由 sub_full_redraw() 把 4 行完整刷一遍（每一行都会清掉自己在的 2 页）。 */
+
+    s_fullRedraw = 1;
+}
+
+void Display_Poll(void)
+{
+    u8 needBig    = 0;
+    u8 needDate   = 0;
+    u8 needEnv    = 0;
+    u8 needSub    = 0;
+    u8 i;
+    u8 alarmOn = 0;
+
+    /* ====================================================================
+     * 【2026-09-19 方案 B · 核心改动】
+     * 全工程所有 I2C 访问都在这一个任务（TASK_RENDER）里串行执行。
+     *
+     * 依据：参考项目 demo30 的 I2C 显示任务里连 RTC 读取都在
+     *       （`case 3: RTC_show(); break;`），所有 I2C 天然串行，所以它不需要总线锁。
+     * 本工程此前是 TASK_RENDER 刷屏 + TASK_LOGIC 读时钟，两个任务共用一个总线，
+     * 靠 I2C_Lock 交替 —— 一旦锁竞争到超时强夺，两个任务就会同时往总线发字节，
+     * 字节流错位，屏幕就花屏/黑屏（真机现象：左 1/3 正常、中间黑、右边光点 = 列地址错位）。
+     *
+     * 现在 TASK_LOGIC / 按键 / 串口协议 都只置下面的标志，由这里统一执行。
+     * ==================================================================== */
+    if (g_reqClockRefresh)
+    {
+        g_reqClockRefresh = 0;
+        Clock_Refresh();                /* 每秒读一次时间（I2C 读） */
+    }
+    if (g_reqClockSet)
+    {
+        g_reqClockSet = 0;
+        Clock_SetNow(&g_clock);         /* 校时写芯片（I2C 写） */
+        Alarm_ApplyHardwareNow();       /* 时间变了，硬件闹钟跟着重算 */
+    }
+    if (g_reqClockRecover)
+    {
+        g_reqClockRecover = 0;
+        Clock_TryRecoverNow();          /* 时钟自救 */
+    }
+    if (g_reqAlarmApply)
+    {
+        g_reqAlarmApply = 0;
+        Alarm_ApplyHardwareNow();       /* 重写硬件闹钟（I2C 写） */
+    }
+    if (g_reqRtcIrq)
+    {
+        g_reqRtcIrq = 0;
+        Alarm_OnRtcIrq();               /* 清时钟芯片中断标志（I2C 读写） */
+    }
+
+    s_dbgPoll++;            /* 诊断：TASK_RENDER 活性 */
+
+    /* 【2026-09-19 删除周期整屏重画】
+     * demo30 运行期**没有任何周期性整屏刷新** —— 它只在切页时 Clear 一次，
+     * 之后只对"内容变了的那一行"写一次 ShowString（32 字节）。
+     * 我原来每 10 秒强制整屏重画（Clear 1024 字节 + 4 行），
+     * 那个"清屏与重画之间的窗口"正是"某一行闪乱码"的机会。
+     * 所以删掉。整屏重画只在 s_fullRedraw（切页面）时发生。 */
+
+    /* 统计开着的闹钟组数，用于判断环境行要不要重画 */
+    for (i = 0; i < ALARM_MAX; i++)
+    {
+        if (g_alarms[i].enable)
+        {
+            alarmOn++;
+        }
+    }
+
+    /* 【2026-09-18 修正 · 关键】限流改到"执行点"。
+     *
+     * 原来限流放在 Display_RequestFull()（请求点），但 Display_SetPage() 也会
+     * 直接置 s_fullRedraw —— 切页面绕过了限流。真机数据：
+     *     [DISP] poll=1000 sub=10 full=18
+     * 5 秒内做了 18 次整屏重画 = 18 x 350ms = 6.3 秒 I2C 挤进 5 秒窗口，
+     * 总线又被打满。放在执行点才真正限得住：不管谁请求，1.2 秒内只做一次。 */
+    if (s_fullRedraw)
+    {
+        if (s_lastFullExecMs != 0 && SysTick_Elapsed(s_lastFullExecMs) < 800U)
+        {
+            return;             /* 还没到点：保留 s_fullRedraw，下一拍再做 */
+        }
+        s_lastFullExecMs = SysTick_Get();
+
+        if (s_mainOn)
+        {
+            main_full_redraw();
+        }
+
+        sub_full_redraw();      /* 内部按页加锁，外部不再整段持锁 */
+        s_dbgFull++;
+
+        s_lastHour    = g_clock.hour;
+        s_lastMinute  = g_clock.minute;
+        s_lastDay     = g_clock.day;
+        s_lastSec     = g_clock.second;
+        s_lastTemp    = g_tempX10;
+        s_lastHumi    = g_humi;
+        s_lastAlarmOn = alarmOn;
+        s_lastValid   = Sensor_HumiValid();
+
+        s_fullRedraw = 0;
+        s_envTimer   = 0;
+
+        return;
+    }
+
+    /* ---- 判断主屏哪几行需要重画 ---- */
+    if (g_clock.hour != s_lastHour || g_clock.minute != s_lastMinute)
+    {
+        needBig = 1;
+    }
+    if (g_clock.day != s_lastDay)
+    {
+        needDate = 1;
+    }
+    if (g_tempX10 != s_lastTemp || g_humi != s_lastHumi ||
+        alarmOn != s_lastAlarmOn || Sensor_HumiValid() != s_lastValid)
+    {
+        needEnv = 1;
+    }
+
+    /* 环境值偶尔抖动，最多每 2 秒重画一次，避免刷屏占满带宽 */
+    s_envTimer++;
+    if (s_envTimer >= 400)          /* 400 x 5ms = 2s */
+    {
+        s_envTimer = 0;
+        needEnv = 1;
+    }
+
+    /* ---- 副屏增量刷新：只重画"内容变了的那一行"【2026-09-19 照 demo30】
+     *
+     * demo30 的粒度就是这样的：`I2C_OLED_ShowString(0, 2, strbuff, 16)` ——
+     * 一次只写一行的 32 字节，不做 Clear、不碰别的行。
+     * 这样一次写入极短，既不容易被打断，屏幕上看不到"全黑再重画"的中间过程。 */
+
+    /* 第 2 行（时间行）：秒变了就重画这一行 */
+    if (g_clock.second != s_lastSec)
+    {
+        char b1[24];
+        sprintf(b1, "%02d:%02d:%02d %s",
+                (int)g_clock.hour, (int)g_clock.minute, (int)g_clock.second,
+                week_abbr(g_clock.week));
+        sub_draw_line(1, b1);
+    }
+
+    /* 第 3 行（日期行）：日期变了才重画 */
+    if (g_clock.day != s_lastDay)
+    {
+        char b2[24];
+        sprintf(b2, "%04d-%02d-%02d", (int)g_clock.year, (int)g_clock.month, (int)g_clock.day);
+        sub_draw_line(2, b2);
+    }
+
+    /* 第 4 行（音量 / 校时输入）：只有内容真的变了才重画 */
+    if (s_line3Dirty)
+    {
+        char b3[24];
+        s_line3Dirty = 0;
+        sub_build_line3(b3);
+        sub_draw_line(3, b3);
+    }
+
+    /* （第 4 行的刷新已在上面按"只刷一行"处理） */
+
+    s_lastHour    = g_clock.hour;
+    s_lastMinute  = g_clock.minute;
+    s_lastDay     = g_clock.day;
+    s_lastSec     = g_clock.second;
+    s_lastTemp    = g_tempX10;
+    s_lastHumi    = g_humi;
+    s_lastAlarmOn = alarmOn;
+    s_lastValid   = Sensor_HumiValid();
+
+}
+
+/*========================================================================
+ *                    TASK_RENDER：5ms 一拍
+ *========================================================================*/
+
+void task_render(void) _task_ TASK_RENDER
+{
+    /* 等一会儿再动屏幕：主时钟、I2C、SPI 的 IO 由 TASK_MAIN 配，
+     * 这里多等 100ms 保证配置已完成（v3.1 的 App_RTC.c 也这么处理）。 */
+    os_wait2(K_TMO, 20);
+
+    Display_Init();
+
+    /* 【方案 B】时钟初始化放在这里 —— Clock_Init() 内部会读 PCF8563（I2C），
+     * 必须和屏幕刷新在同一个任务里，才能保证全工程 I2C 串行、不需要总线锁。 */
+    Clock_Init();
+
+    while (1)
+    {
+        Display_Poll();
+
+        os_wait2(K_TMO, 1);     /* 1 x 5ms */
+    }
+}

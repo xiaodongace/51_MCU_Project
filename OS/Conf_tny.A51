@@ -31,20 +31,13 @@ $NOMOD51 DEBUG
 ;
 ;  Define the register bank used for the timer interrupt.
 INT_REGBANK	EQU	1	; default is Registerbank 1
-; 12T 一个机器周期 = 12个时钟周期
-; INT_CLOCK = 晶振频率 / 12 / 期望的节拍频率
-; 10000     = 24M / 12 / 200 = 24M / 12 / (1000ms / 5ms)
-; 1000ms / 5ms = 200
-;  Define Hardware-Timer tick time in 8051 machine cycles.
 ;
+;  Define Hardware-Timer tick time in 8051 machine cycles.
 INT_CLOCK	EQU	10000	; default is 10000 cycles
 ;
 ;  Define Round-Robin Timeout in Hardware-Timer ticks.
 TIMESHARING	EQU     5	; default is 5 Hardware-Timer ticks.
-						; 每个任务最多执行 5 * 5ms = 25ms
-						; RTX1会自动强制切换到下一个任务
-						;
-		                ; 0 disables Round-Robin Task Switching 禁止任务切换
+;		                ; 0 disables Round-Robin Task Switching
 ;
 ;  Long User Interrupt Routines: set to 1 if your application contains 
 ;  user interrupt functions that may take longer than a hardware timer 

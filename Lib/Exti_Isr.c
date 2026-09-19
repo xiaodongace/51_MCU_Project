@@ -18,6 +18,11 @@
 
 u8 WakeUpSource;
 
+/* 修补：v3.1 的 INT3 中断只写 WakeUpSource，PCF8563_int_call() 无人调用，
+ * 闹钟中断实际上从来没被处理过。本工程在中断里只置标志位（中断必须极短），
+ * I2C 清标志与业务派发放到 TASK_LOGIC 任务里做。 */
+extern volatile bit g_rtcIrqFlag;
+
 //========================================================================
 // 函数: INT0_ISR_Handler
 // 描述: INT0中断函数.
@@ -70,7 +75,8 @@ void INT2_ISR_Handler (void) interrupt INT2_VECTOR		//进中断时已经清除标志
 void INT3_ISR_Handler (void) interrupt INT3_VECTOR		//进中断时已经清除标志
 {
 	// TODO: 在此处添加用户代码
-//	P03 = ~P03;
+	// 时钟芯片到点：只置标志，马上退出中断
+	g_rtcIrqFlag = 1;
 	WakeUpSource = 4;
 }
 

@@ -31,6 +31,16 @@ typedef unsigned char   u8;     //  8 bits
 typedef unsigned int    u16;    // 16 bits 
 typedef unsigned long   u32;    // 32 bits 
 
+// 有符号短别名。厂家原本只给了 int8/int16/int32，但本项目文档（《04-M1分工规格》
+// 接口清单）统一写的是 s16 这类写法，这里补上别名，避免各处混用两种命名。
+// 用 ifndef 保护，防止将来的版本重复定义。
+#ifndef __SIGNED_ALIAS_DEFINED
+#define __SIGNED_ALIAS_DEFINED
+typedef signed char     s8;     //  8 bits 
+typedef signed int      s16;    // 16 bits 
+typedef signed long     s32;    // 32 bits 
+#endif
+
 typedef signed char     int8;   //  8 bits 
 typedef signed int      int16;  // 16 bits 
 typedef signed long     int32;  // 32 bits 
@@ -76,8 +86,8 @@ typedef unsigned long   uint32; // 32 bits
 //                                头文件
 //========================================================================
 
-#include "RTX51TNY.H"
 #include "STC8H.H"
+#include "RTX51TNY.H"
 #include <intrins.h>
 #include <stdlib.h>
 #include <stdio.h>

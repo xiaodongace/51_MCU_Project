@@ -48,7 +48,7 @@
 #define		STC8XxK60	60
 
 //	—°‘ÒMCU–Õ∫≈
-#define	MCU_Type	STC8X1K08  //STC8X1K08, STC8X1K16, STC8XxK32, STC8XxK32, STC8XxK60
+#define	MCU_Type	STC8XxK60  //STC8X1K08, STC8X1K16, STC8XxK32, STC8XxK32, STC8XxK60
 
 /************************** ISP/IAP *****************************
 

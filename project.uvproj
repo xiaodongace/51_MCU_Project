@@ -7,7 +7,7 @@
 
   <Targets>
     <Target>
-      <TargetName>Target_1</TargetName>
+      <TargetName>Target 1</TargetName>
       <ToolsetNumber>0x0</ToolsetNumber>
       <ToolsetName>MCS-51</ToolsetName>
       <uAC6>0</uAC6>
@@ -46,7 +46,7 @@
             <InvalidFlash>1</InvalidFlash>
           </TargetStatus>
           <OutputDirectory>.\Objects\</OutputDirectory>
-          <OutputName>project</OutputName>
+          <OutputName>Project</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
           <CreateHexFile>1</CreateHexFile>
@@ -324,7 +324,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope;.\Driver\NIXIE;.\Driver\Uarts;.\Driver\Buzzer;.\Driver\LED;.\Driver\DHT_11;.\Driver\RTC_Alarm_Clock;.\Driver\NTC;.\App\App;.\App\App_oled</IncludePath>
+              <IncludePath>.\Lib;.\User;.\Driver;.\App;.\Driver\SPI_OLED;.\Driver\I2C_OLED</IncludePath>
             </VariousControls>
           </C51>
           <Ax51>
@@ -348,7 +348,7 @@
             <DataOverlaying>1</DataOverlaying>
             <OverlayString></OverlayString>
             <MiscControls></MiscControls>
-            <DisableWarningNumbers>15,16,17</DisableWarningNumbers>
+            <DisableWarningNumbers>16,15</DisableWarningNumbers>
             <LinkerCmdFile></LinkerCmdFile>
             <Assign></Assign>
             <ReserveString></ReserveString>
@@ -392,34 +392,144 @@
               <FilePath>.\App\App_Public.h</FilePath>
             </File>
             <File>
-              <FileName>App_NIXIE_Task.c</FileName>
+              <FileName>App_Public.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\App\App_NIXIE\App_NIXIE_Task.c</FilePath>
+              <FilePath>.\App\App_Public.c</FilePath>
             </File>
             <File>
-              <FileName>App_Oscilloscope_Task.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\App\App_Oscilloscope\App_Oscilloscope_Task.c</FilePath>
+              <FileName>App_System.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_System.h</FilePath>
             </File>
             <File>
-              <FileName>App_Buzzer.c</FileName>
+              <FileName>App_System.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\App\App_Buzzer\App_Buzzer.c</FilePath>
+              <FilePath>.\App\App_System.c</FilePath>
             </File>
             <File>
-              <FileName>App.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\App\App\App.c</FilePath>
+              <FileName>App_Font.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Font.h</FilePath>
             </File>
             <File>
-              <FileName>App_oled.c</FileName>
+              <FileName>App_Font.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\App\App_oled\App_oled.c</FilePath>
+              <FilePath>.\App\App_Font.c</FilePath>
             </File>
             <File>
-              <FileName>App_DHT11_OLED.c</FileName>
+              <FileName>App_Input.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Input.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Input.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\App\App_DHT11_OLED\App_DHT11_OLED.c</FilePath>
+              <FilePath>.\App\App_Input.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Clock.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Clock.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Clock.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Clock.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Alarm.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Alarm.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Alarm.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Alarm.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Storage.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Storage.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Storage.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Storage.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Sensor.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Sensor.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Sensor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Sensor.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Music.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Music.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Music.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Music.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Songs.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Songs.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Songs.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Songs.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Display.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Display.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Display.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Display.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Icons.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Icons.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Menu.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Menu.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Menu.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Menu.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Uart.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Uart.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Game.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Game.h</FilePath>
+            </File>
+            <File>
+              <FileName>App_Game.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Game.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -427,14 +537,14 @@
           <GroupName>Driver</GroupName>
           <Files>
             <File>
-              <FileName>I2C_OLED.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\I2C_OLED\I2C_OLED.c</FilePath>
+              <FileName>spi_oled.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\SPI_OLED\spi_oled.h</FilePath>
             </File>
             <File>
-              <FileName>SPI_OLED.c</FileName>
+              <FileName>spi_oled.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Driver\SPI_OLED\SPI_OLED.c</FilePath>
+              <FilePath>.\Driver\SPI_OLED\spi_oled.c</FilePath>
             </File>
             <File>
               <FileName>I2C_OLED.h</FileName>
@@ -442,74 +552,134 @@
               <FilePath>.\Driver\I2C_OLED\I2C_OLED.h</FilePath>
             </File>
             <File>
-              <FileName>SPI_OLED.h</FileName>
+              <FileName>I2C_OLED.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\I2C_OLED\I2C_OLED.c</FilePath>
+            </File>
+            <File>
+              <FileName>I2C_Lock.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\Driver\SPI_OLED\SPI_OLED.h</FilePath>
+              <FilePath>.\Driver\I2C_Lock.h</FilePath>
             </File>
             <File>
-              <FileName>Key.c</FileName>
+              <FileName>I2C_Lock.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Driver\Key\Key.c</FilePath>
+              <FilePath>.\Driver\I2C_Lock.c</FilePath>
             </File>
             <File>
-              <FileName>Timers.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\Timers\Timers.c</FilePath>
+              <FileName>Keys.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\Keys.h</FilePath>
             </File>
             <File>
-              <FileName>Oscilloscope.c</FileName>
+              <FileName>Keys.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Driver\Oscilloscope\Oscilloscope.c</FilePath>
+              <FilePath>.\Driver\Keys.c</FilePath>
             </File>
             <File>
-              <FileName>NIXIE.c</FileName>
+              <FileName>MatrixKey.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\MatrixKey.h</FilePath>
+            </File>
+            <File>
+              <FileName>MatrixKey.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Driver\NIXIE\NIXIE.c</FilePath>
+              <FilePath>.\Driver\MatrixKey.c</FilePath>
             </File>
             <File>
               <FileName>NIXIE.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\Driver\NIXIE\NIXIE.h</FilePath>
+              <FilePath>.\Driver\NIXIE.h</FilePath>
             </File>
             <File>
-              <FileName>Alarmclock.c</FileName>
+              <FileName>NIXIE.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Driver\RTC_Alarm_Clock\Alarmclock.c</FilePath>
+              <FilePath>.\Driver\NIXIE.c</FilePath>
             </File>
             <File>
-              <FileName>Alarmclock.h</FileName>
+              <FileName>NixieScan.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\Driver\RTC_Alarm_Clock\Alarmclock.h</FilePath>
+              <FilePath>.\Driver\NixieScan.h</FilePath>
             </File>
             <File>
-              <FileName>bmp.h</FileName>
+              <FileName>NixieScan.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\NixieScan.c</FilePath>
+            </File>
+            <File>
+              <FileName>Timers.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\Driver\I2C_OLED\bmp.h</FilePath>
+              <FilePath>.\Driver\Timers.h</FilePath>
             </File>
             <File>
-              <FileName>Uarts.c</FileName>
+              <FileName>Timers.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Driver\Uarts\Uarts.c</FilePath>
+              <FilePath>.\Driver\Timers.c</FilePath>
             </File>
             <File>
-              <FileName>Buzzer.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\Buzzer\Buzzer.c</FilePath>
-            </File>
-            <File>
-              <FileName>LED.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\LED\LED.c</FilePath>
-            </File>
-            <File>
-              <FileName>DHT_11.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\DHT_11\DHT_11.c</FilePath>
+              <FileName>NTC.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\NTC.h</FilePath>
             </File>
             <File>
               <FileName>NTC.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Driver\NTC\NTC.c</FilePath>
+              <FilePath>.\Driver\NTC.c</FilePath>
+            </File>
+            <File>
+              <FileName>DHT11.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\DHT11.h</FilePath>
+            </File>
+            <File>
+              <FileName>DHT11.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\DHT11.c</FilePath>
+            </File>
+            <File>
+              <FileName>PCF8563.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\PCF8563.h</FilePath>
+            </File>
+            <File>
+              <FileName>PCF8563.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\PCF8563.c</FilePath>
+            </File>
+            <File>
+              <FileName>Buzzer.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\Buzzer.h</FilePath>
+            </File>
+            <File>
+              <FileName>Buzzer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Buzzer.c</FilePath>
+            </File>
+            <File>
+              <FileName>LED.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\LED.h</FilePath>
+            </File>
+            <File>
+              <FileName>LED.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\LED.c</FilePath>
+            </File>
+            <File>
+              <FileName>Motor.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\Motor.h</FilePath>
+            </File>
+            <File>
+              <FileName>Motor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Motor.c</FilePath>
+            </File>
+            <File>
+              <FileName>Servo.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Servo.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -527,9 +697,19 @@
               <FilePath>.\Lib\ADC_Isr.c</FilePath>
             </File>
             <File>
-              <FileName>Delay.c</FileName>
+              <FileName>EEPROM.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Lib\Delay.c</FilePath>
+              <FilePath>.\Lib\EEPROM.c</FilePath>
+            </File>
+            <File>
+              <FileName>Exti.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Lib\Exti.c</FilePath>
+            </File>
+            <File>
+              <FileName>Exti_Isr.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Lib\Exti_Isr.c</FilePath>
             </File>
             <File>
               <FileName>GPIO.c</FileName>
@@ -537,9 +717,9 @@
               <FilePath>.\Lib\GPIO.c</FilePath>
             </File>
             <File>
-              <FileName>GPIO_Isr.c</FileName>
+              <FileName>NVIC.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Lib\GPIO_Isr.c</FilePath>
+              <FilePath>.\Lib\NVIC.c</FilePath>
             </File>
             <File>
               <FileName>I2C.c</FileName>
@@ -552,29 +732,19 @@
               <FilePath>.\Lib\I2C_Isr.c</FilePath>
             </File>
             <File>
-              <FileName>NVIC.c</FileName>
+              <FileName>Delay.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Lib\NVIC.c</FilePath>
+              <FilePath>.\Lib\Delay.c</FilePath>
             </File>
             <File>
-              <FileName>SPI.c</FileName>
+              <FileName>Soft_I2C.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Lib\SPI.c</FilePath>
-            </File>
-            <File>
-              <FileName>SPI_Isr.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Lib\SPI_Isr.c</FilePath>
+              <FilePath>.\Lib\Soft_I2C.c</FilePath>
             </File>
             <File>
               <FileName>STC8H_PWM.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Lib\STC8H_PWM.c</FilePath>
-            </File>
-            <File>
-              <FileName>STC8H_PWM_Isr.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Lib\STC8H_PWM_Isr.c</FilePath>
             </File>
             <File>
               <FileName>Timer.c</FileName>

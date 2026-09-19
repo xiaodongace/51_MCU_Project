@@ -32,7 +32,7 @@ void Nixie_task();
 void Nixie_Run();
 
 // 关闭数码管显示
-// void Nixie_Close();
+void Nixie_Close();
 
 
 #endif

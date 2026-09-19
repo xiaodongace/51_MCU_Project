@@ -155,3 +155,11 @@ void Nixie_SetNumber(u32 number) {
     }
     EA = old_ea;
 }
+
+// 关闭数码管显示: 段码 0xFF 熄灭所有段(本板段码 0 为点亮), 位选 0x00 不选任何位
+void Nixie_Close() {
+	// 关闭数码管显示
+	// Nixie_show(0xFF, 0x00);
+	// 直接关闭引脚
+	NIXIE_PIN_INIT();
+}

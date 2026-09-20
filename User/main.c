@@ -6,6 +6,7 @@
 #include "DHT_11.h"
 #include "NTC.h"
 #include "Uarts.h"
+#include "Oscilloscope.h"
 
 void Sys_Init(void) {
 	EA = 0;			// 关闭全局中断 初始化结束后统一开启
@@ -29,22 +30,21 @@ void Sys_Init(void) {
 }
 
 // 这里函数名可随意, 建议不要使用start, 会和I2C.h里的Start冲突
-void Main_Start() _task_ 0 {
+void Main_Start() _task_ App_Main_Task_Id {
+	/* 统一初始化入口 */ 
 	Sys_Init();
-	// 创建任务 1
-	// os_create_task(1);
-	// 结束任务 0
-    // os_create_task(SPI_OLED_Task_ID);
-    // os_create_task(I2C_OLED_Task_ID);
-    os_create_task(App_Oscilloscope_Task_Id);
-
-	// 创建任务 7 -> 蜂鸣器 + 小灯
-	os_create_task(App_Buzzer_Task_Id);
-
-
-	// os_create_task(App_Nixie_Task_Id);
-	// 温湿度—I2C_OLED
-	// os_create_task(App_DHT11_Task_Id);
 	
+	/* 创建任务入口 */
+    // os_create_task(SPI_OLED_Task_ID);		// SPI显示
+    // os_create_task(I2C_OLED_Task_ID);		// I2C显示
+
+    os_create_task(App_Oscilloscope_Task_Id);	// 电动马达
+	os_create_task(App_Buzzer_Task_Id);			// 蜂鸣器 + 小灯
+
+	
+	// os_create_task(App_Nixie_Task_Id);		// 数码管显示
+	// os_create_task(App_DHT11_Task_Id);		// 温湿度—I2C_OLED
+	
+	/* 销毁任务 */
     os_delete_task(0);
 }

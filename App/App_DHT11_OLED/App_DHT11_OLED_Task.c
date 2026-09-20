@@ -11,9 +11,6 @@ void App_DHT11_OLED_Task(void)_task_ App_DHT11_Task_Id {
     int8 rst; // rst -> result  
     char humBuf[32], tempBuf[32], volBuf[32], ntcBuf[32];
     
-    EAXSFR();
-    
-    EA = 1;
     
     I2C_OLED_Init();
 	I2C_OLED_ColorTurn(0);

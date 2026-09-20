@@ -14,7 +14,7 @@
 */
 
 
-void Task_Buzzer() _task_ App_Buzzer_Task_Id {
+void App_Buzzer_Task() _task_ App_Buzzer_Task_Id {
     u8 led_tick = 0;    // LED 刷新计数(每 15 轮 ≈ 150ms 换一组)
 
     while (1)

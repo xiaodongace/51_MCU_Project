@@ -8,9 +8,9 @@
 #include "App_Public.h"
 
 u8 duty_percent=0;
-void test_task4() _task_ App_Oscilloscope_Task_Id {
+void App_Oscilloscope_Task() _task_ App_Oscilloscope_Task_Id {
 
-    Oscilloscope_init();
+    
     while(1){
         Clear_screen(0);
       

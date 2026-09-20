@@ -1,3 +1,4 @@
+#include "Pwm.h"
 #include "Oscilloscope.h"
 
 static void Oscilloscope_GPIO_config(void) {
@@ -14,47 +15,42 @@ static void Oscilloscope_GPIO_config(void) {
     GPIO_Inilize(GPIO_P3, &GPIO_InitStructure);
 }
 
-PWMx_Duty duty;
 
-static void PWM_config(void)
+static void Oscilloscope_PWM_Init(void)
 {
-    PWMx_InitDefine     PWMx_InitStructure;
+    Pwm_InitTypeDef pwmConfig;
 
-    // ????PWM6
-    PWMx_InitStructure.PWM_Mode         = CCMRn_PWM_MODE1;
-    PWMx_InitStructure.PWM_Duty         = duty.PWM6_Duty;
-    PWMx_InitStructure.PWM_EnoSelect    = ENO6P;
-    PWM_Configuration(PWM6, &PWMx_InitStructure);
+    pwmConfig.Channel          = PWM6;
+    pwmConfig.Route            = PWM6_SW_P01;
+    pwmConfig.Mode             = CCMRn_PWM_MODE1;
+    pwmConfig.OutputSelect     = ENO6P;
+    pwmConfig.Period           = PERIOD - 1;
+    pwmConfig.Duty             = 0;
+    pwmConfig.DeadTime         = 0;
+    pwmConfig.CounterEnable    = ENABLE;
+    pwmConfig.MainOutputEnable = ENABLE;
+    pwmConfig.InterruptState   = DISABLE;
+    pwmConfig.Priority         = Priority_0;
 
-    // ????PWMB
-    PWMx_InitStructure.PWM_Period   = PERIOD - 1;
-    PWMx_InitStructure.PWM_DeadTime = 0;
-    PWMx_InitStructure.PWM_MainOutEnable = ENABLE;
-    PWMx_InitStructure.PWM_CEN_Enable    = ENABLE;
-    PWM_Configuration(PWMB, &PWMx_InitStructure);
-
-    // ??PWM???
-    PWM6_SW(PWM6_SW_P01);
-
-    // ?????PWMB????
-    NVIC_PWM_Init(PWMB, DISABLE, Priority_0);
+    Pwm_Init(&pwmConfig);
 }
 
-void Oscilloscope_init(void){
-    EA = 1;
-    EAXSFR();
+void Oscilloscope_init(void)
+{
     Oscilloscope_GPIO_config();
-    PWM_config();
+    Oscilloscope_PWM_Init();
 }
 
-void Motor_pwm_duty(u8* duty_percent){
-   
-    duty.PWM6_Duty = (PERIOD - 1) * (*duty_percent) / 100;
+void Motor_pwm_duty(u8* duty_percent)
+{
+    u16 dutyValue;
 
-    UpdatePwm(PWM6, &duty);
+    dutyValue = (u16)((u32)(PERIOD - 1) * (*duty_percent) / 100UL);
+    Pwm_SetDuty(PWM6, dutyValue);
 
     (*duty_percent) += 10;
-    if(*duty_percent > 30){
+    if (*duty_percent > 30)
+    {
         *duty_percent = 0;
     }
 }

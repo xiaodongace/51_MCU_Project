@@ -26,4 +26,9 @@ void show_Oscilloscope(void) {
     I2C_OLED_ShowString(0, 2, str, 16);
 }
 
+void delete_Oscilloscope(void){
+    //关闭小马达；
+    //将屏幕占空比改为0；
+}
+
 

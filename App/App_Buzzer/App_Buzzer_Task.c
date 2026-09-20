@@ -1,6 +1,7 @@
 #include "Buzzer.h"
 #include "Key.h"
 #include "LED.h"
+#include "NIXIE.h"
 
 /* Buzzer任务函数
  * 1、扫描独立按键，根据按键1状态 播放 | 暂停 音符
@@ -9,9 +10,7 @@
  * 3、根据按键3状态：按键3松开后音乐音量--，音量范围0-10
  * 4、根据按键4状态：按键4松开后音乐音量++，音量范围0-10
  * 5、播放时 LED 随机闪烁(2-6个),暂停时全灭
- * 6、数码管上面显示当前播放的音标
- * 
- * 6不着急做
+ * 6、走马灯数码管
 */
 
 
@@ -20,10 +19,10 @@ void Task_Buzzer() _task_ App_Buzzer_Task_Id {
 
     while (1)
     {
+        Nixie_Run();
         Key_Scan();
         if(Key_GetPressEvent(0) != 0) {
             printf("111");
-
             Buzzer_Play_Pause(!Buzzer_IsPlaying());
         }
         if(Key_GetPressEvent(1) != 0) {

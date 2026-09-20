@@ -14,6 +14,9 @@
 // 初始化
 void Nixie_init();
 
+void Nixie_Refresh(void);
+void Nixie_SetNumber(u32 number);
+
 // 在某一位显示数字
 void Nixie_show(num, idx);
 
@@ -22,6 +25,15 @@ void Nixie_display(num, idx);
 
 // 扫描
 void Nixie_Scan2ms();
+
+void Nixie_task();
+
+// 走马灯数码管
+void Nixie_Run();
+
+// 关闭数码管显示
+void Nixie_Close();
+
 
 #endif
 

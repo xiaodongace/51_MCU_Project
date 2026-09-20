@@ -1,5 +1,4 @@
 #include "NIXIE.h"
-#include "Delay.h"
 
 #define GET_BIT_VAL(byte, pos)	(byte & (1 << pos))
 
@@ -13,10 +12,25 @@
 		NIXIE_RCK = 1;		\
 		NOP_TIME();
 
+/* 8个数码管显示的数字 */		
+volatile u8 nixie_digits[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile u8 nixie_scan_pos = 0;
+
+void Nixie_Refresh(void)
+{
+    Nixie_display(nixie_digits[nixie_scan_pos],
+                  nixie_scan_pos);
+
+    nixie_scan_pos++;
+
+    if (nixie_scan_pos >= 8) {
+        nixie_scan_pos = 0;
+    }
+}
 
 // 初始化
 void Nixie_init(){
-		NIXIE_PIN_INIT();
+	NIXIE_PIN_INIT();
 }
 
 static void NIXIE_out(u8 dat){
@@ -38,9 +52,9 @@ void Nixie_show(num, idx){
 		NIXIE_out(num);
 	
 		NIXIE_out(idx);
-		
+    
 		// 锁存操作
-		RCK_ACTION();
+        RCK_ACTION();
 }
 
 u8 code LED_TABLE[] = 
@@ -59,18 +73,93 @@ u8 code LED_TABLE[] =
 void Nixie_display(num, idx){
 		u8 a_dat = LED_TABLE[num];	// 0001 0010	字母位
 		u8 b_idx = 1 << idx;					// 0010 0000	数字位 5
-	
+    
 		Nixie_show(a_dat, b_idx);
 }
+
+void Nixie_task(void)
+{
+}
+
+u8 display_buf[8] = {1,2,3,4,5,6,7,8};
 
 static u16 Nixie_change_ms = 0;
 
 // 扫描
 void Nixie_Scan2ms(){
-		u16 now = Timers_GetSystemMs();
+		
+}
 
-		if(now - Nixie_change_ms == 2){
-				Nixie_change_ms = now;
-				return;
-		}
+
+// 走马灯数码管
+u8 code nixie_pos[][2] = {
+	{0, 0}, {0, 1}, {0, 2}, 
+	{1, 3}, {1, 2}, {1, 1},
+	{2, 0}, {2, 1}, {2, 2}, 
+	{3, 3}, {3, 2}, {3, 1},
+	{4, 0}, {4, 1}, {4, 2}, 
+	{5, 3}, {5, 2}, {5, 1},
+	{6, 0}, {6, 1}, {6, 2},
+	{7, 3}, {7, 2}, {7, 1},
+
+	{7, 0}, {7, 5}, {7, 4},   // a, f, e
+	{6, 3}, {6, 4}, {6, 5},   // d, e, f
+	{5, 0}, {5, 5}, {5, 4},
+	{4, 3}, {4, 4}, {4, 5},
+	{3, 0}, {3, 5}, {3, 4},
+	{2, 3}, {2, 4}, {2, 5},
+	{1, 0}, {1, 5}, {1, 4},
+	{0, 3}, {0, 4}, {0, 5}
+};
+
+// 数码管扫描: 由外部周期调用, 每 20ms 扫一个位置, 循环滚动
+void Nixie_Run() {
+    static u16 timer_now = 0;               // 上次扫描的系统时刻, static 跨调用保持
+    static u8  scan_idx  = 0;               // 当前扫描位置下标, 扫完一轮归零
+    u16 now = Timers_GetSystemMs();         // 读取系统毫秒时间
+
+    u8 com = nixie_pos[scan_idx][0];        // COM 位选: 选择第几位数码管
+    u8 seg = nixie_pos[scan_idx][1];        // SEG 段选: 选择点亮的段
+
+    // 非阻塞定时: 距上次扫描不足 20ms 直接返回
+    // now - timer_now 是 u16 无符号减法, 溢出回绕后判断依然正确
+    if (now - timer_now < 100) return;
+    timer_now = now;                        // 更新节拍基准
+
+    // 段码对应位清 0 点亮, 位码对应位写 1 选通
+    Nixie_show(~(1 << seg), 1 << com);
+
+    // 下标前移, 扫完一轮回到开头
+    if (++scan_idx >= sizeof(nixie_pos) / sizeof(nixie_pos[0])) {
+        scan_idx = 0;
+    }
+}
+
+/*
+	后续可以使用RTC时钟获取时间
+	u32 date_value;
+	date_value = year * 10000UL
+			+ month * 100UL
+			+ day;
+
+	Nixie_SetNumber(date_value);
+*/
+void Nixie_SetNumber(u32 number) {
+    u8 i;
+    u8 old_ea = EA;
+
+    EA = 0;
+    for (i = 0; i < 8; i++) {
+        nixie_digits[7 - i] = (u8)(number % 10UL);
+        number /= 10UL;
+    }
+    EA = old_ea;
+}
+
+// 关闭数码管显示: 段码 0xFF 熄灭所有段(本板段码 0 为点亮), 位选 0x00 不选任何位
+void Nixie_Close() {
+	// 关闭数码管显示
+	// Nixie_show(0xFF, 0x00);
+	// 直接关闭引脚
+	P4M0 &= ~0x1c; P4M1 |= 0x1c;
 }

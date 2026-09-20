@@ -3,7 +3,7 @@
 #include "UART.h"
 #include "NVIC.h"
 #include "Switch.h"
-#include "STC8H_PWM.h"
+#include "Pwm.h"
 #include "LED.h"
 
 #define BUZZER	P00
@@ -72,86 +72,95 @@ static u16 note_remain  = 0;            // 当前音符剩余拍数(单位:任�
 
 
 // 初始化蜂鸣器引脚
-void Buzzer_GPIO(void) {
-    // 初始化串口引脚
-    P3_MODE_IO_PU(GPIO_Pin_0 | GPIO_Pin_1);
+static void Buzzer_GPIO_Init(void) {
     // 初始化蜂鸣器引脚(P00, PWM5 输出)
     P0_MODE_OUT_PP(GPIO_Pin_0);
 }
 
-// 初始化串口
-void Buzzer_Uart(void) {
-    // >>> 记得添加 NVIC.c, UART.c, UART_Isr.c <<<
-    COMx_InitDefine		COMx_InitStructure;					//结构定义
-	// ================UART1  P30 P31================
-    COMx_InitStructure.UART_Mode      = UART_8bit_BRTx;	//模式, UART_ShiftRight,UART_8bit_BRTx,UART_9bit,UART_9bit_BRTx
-    COMx_InitStructure.UART_BRT_Use   = BRT_Timer1;			//选择波特率发生器, BRT_Timer1, BRT_Timer2 (注意: 串口2固定使用BRT_Timer2)
-    COMx_InitStructure.UART_BaudRate  = 115200ul;			//波特率, 一般 110 ~ 115200
-    COMx_InitStructure.UART_RxEnable  = ENABLE;				//接收允许,   ENABLE或DISABLE
-    COMx_InitStructure.BaudRateDouble = DISABLE;			//波特率加倍, ENABLE或DISABLE
-    UART_Configuration(UART1, &COMx_InitStructure);		//初始化串口1 UART1,UART2,UART3,UART4
-
-    NVIC_UART1_Init(ENABLE,Priority_1);		//中断使能, ENABLE/DISABLE; 优先级(低到高) Priority_0,Priority_1,Priority_2,Priority_3
-    UART1_SW(UART1_SW_P30_P31);		// 引脚选择, UART1_SW_P30_P31,UART1_SW_P36_P37,UART1_SW_P16_P17,UART1_SW_P43_P44
-}
-
 void Buzzer_PWM(u16 hz_value)
 {
-	PWMx_InitDefine		PWMx_InitStructure;
-    
-    u16 period = (MAIN_Fosc / hz_value);
-	
-	// 配置PWM5
-	PWMx_InitStructure.PWM_Mode    		= CCMRn_PWM_MODE1;	//模式,		CCMRn_FREEZE,CCMRn_MATCH_VALID,CCMRn_MATCH_INVALID,CCMRn_ROLLOVER,CCMRn_FORCE_INVALID,CCMRn_FORCE_VALID,CCMRn_PWM_MODE1,CCMRn_PWM_MODE2
-	PWMx_InitStructure.PWM_Duty   	 	= (u32)period * 3 / 10;	//PWM占空比时间, 0~Period
-	PWMx_InitStructure.PWM_EnoSelect    = ENO5P;			//输出通道选择,	ENO1P,ENO1N,ENO2P,ENO2N,ENO3P,ENO3N,ENO4P,ENO4N / ENO5P,ENO6P,ENO7P,ENO8P
-	PWM_Configuration(PWM5, &PWMx_InitStructure);			//初始化PWM,  PWMA,PWMB
+	Pwm_InitTypeDef pwmConfig;
+	u32 period;
 
-	// 配置PWMB
-	PWMx_InitStructure.PWM_Period = period - 1;			//周期时间,   0~65535
-	PWMx_InitStructure.PWM_DeadTime = 0;					//死区发生器设置, 0~255
-	PWMx_InitStructure.PWM_MainOutEnable= ENABLE;			//主输出使能, ENABLE,DISABLE
-	PWMx_InitStructure.PWM_CEN_Enable   = ENABLE;			//使能计数器, ENABLE,DISABLE
-	PWM_Configuration(PWMB, &PWMx_InitStructure);			//初始化PWM通用寄存器,  PWMA,PWMB
+	if (hz_value == 0)
+	{
+		return;
+	}
 
-	// 切换PWM通道
-	PWM5_SW(PWM5_SW_P00);
+	/* 根据目标频率计算一个 PWM 周期的计数值。 */
+	period = (u32)MAIN_Fosc / hz_value;
 
-	// 初始化PWMB的中断
-	NVIC_PWM_Init(PWMB,DISABLE,Priority_0);
+	if ((period == 0) || (period > 65536UL))
+	{
+		return;
+	}
+
+	/* 配置蜂鸣器使用 PWM5，并将 PWM5 复用到 P0.0。 */
+	pwmConfig.Channel          = PWM5;
+	pwmConfig.Route            = PWM5_SW_P00;
+	pwmConfig.Mode             = CCMRn_PWM_MODE1;
+	pwmConfig.OutputSelect     = ENO5P;
+
+	/* PWM 自动重装载值等于周期计数值减 1。 */
+	pwmConfig.Period           = (u16)(period - 1UL);
+	pwmConfig.Duty             = (u16)(period * 3UL / 10UL);
+
+	pwmConfig.DeadTime         = 0;
+	pwmConfig.CounterEnable    = ENABLE;
+	pwmConfig.MainOutputEnable = ENABLE;
+	pwmConfig.InterruptState   = DISABLE;
+	pwmConfig.Priority         = Priority_0;
+
+	Pwm_Init(&pwmConfig);
 }
 
 // 停止音乐
 void Buzzer_Stop(void) {
-    PWMB_CC5E_Disable();
+    Pwm_Disable(PWM5);
 }
 
 // 初始化蜂鸣器
 void Buzzer_Init(void) {
-	EA = 1;			    // 使能全局中断
 	EAXSFR();		    // 扩展寄存器访问使能
 
-    Buzzer_GPIO();      // 初始化蜂鸣器引脚
+    Buzzer_GPIO_Init();      // 初始化蜂鸣器引脚
     BUZZER = 0;         // 引脚先拉低,上电默认静音
-    Buzzer_Uart();      // 初始化串口
     Buzzer_PWM(1000);   // 初始化PWM5, 1000Hz
     Buzzer_Stop();      // 关闭PWM5比较输出,等待按键播放后再响
 }
 
 // hz_value 音符频率
 void Buzzer_Play(u16 hz_value) {
-    u16 period = (MAIN_Fosc / hz_value);
-    // Volume 0~10 对应占空比 0%~10%,整数运算避免浮点库占用 code
-    u16 duty = (u16)((u32)period * Volume / 100);
+    u32 period;
+    u16 duty;
 
-    // printf("Buzzer_Play->Volume: %d, duty: %d\n", (int)Volume, duty);
-    
-    // 设置PWMB输出Period (1/频率)
-    PWMB_AutoReload(period - 1);	//周期设置
-    // 设置PWM5的占空比(蜂鸣器在 P00,走 PWM5)
-    PWMB_Duty5(duty);
-    // 启用PWMB通道5的输出使能
-    PWMB_CC5E_Enable();
+    if (hz_value == 0)
+    {
+        return;
+    }
+
+    period = (u32)MAIN_Fosc / hz_value;
+
+    if ((period == 0) || (period > 65536UL))
+    {
+        return;
+    }
+
+    /* 蜂鸣器使用 PWM5，PWM5 的公共计数器属于 PWMB。 */
+    if (Pwm_SetFrequency(PWMB, hz_value) != SUCCESS)
+    {
+        return;
+    }
+
+    /* Volume 取值 0~10，对应 0%~10% 的占空比。 */
+    duty = (u16)(period * (u32)Volume / 100UL);
+
+    if (Pwm_SetDuty(PWM5, duty) != SUCCESS)
+    {
+        return;
+    }
+
+    Pwm_Enable(PWM5);
 }
 
 // 从当前 note_index 播一个音,并装入它的拍数

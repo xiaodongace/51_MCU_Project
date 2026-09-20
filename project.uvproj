@@ -218,14 +218,12 @@
             <Mx51P>0</Mx51P>
             <hadXRAM2>0</hadXRAM2>
             <uocXram2>0</uocXram2>
-            <hadXRAM3>0</hadXRAM3>
             <ModC2>0</ModC2>
             <ModH2>0</ModH2>
             <Mdu_R515>0</Mdu_R515>
             <Mdu_F120>0</Mdu_F120>
             <Psoc>0</Psoc>
             <hadIROM2>0</hadIROM2>
-            <hadIROM3>0</hadIROM3>
             <ModSmx2>0</ModSmx2>
             <cBanks>0</cBanks>
             <xBanks>0</xBanks>
@@ -295,16 +293,6 @@
                 <StartAddress>0x0</StartAddress>
                 <Size>0x0</Size>
               </IROM512>
-              <XRA513>
-                <Type>0</Type>
-                <StartAddress>0x0</StartAddress>
-                <Size>0x0</Size>
-              </XRA513>
-              <IROM513>
-                <Type>0</Type>
-                <StartAddress>0x0</StartAddress>
-                <Size>0x0</Size>
-              </IROM513>
             </OnChipMemories>
           </Target51Misc>
           <C51>
@@ -324,7 +312,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope;.\Driver\NIXIE;.\Driver\Uarts;.\Driver\Buzzer;.\Driver\LED</IncludePath>
+              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope;.\Driver\NIXIE;.\Driver\Uarts;.\Driver\Pwm;.\Driver\Buzzer;.\Driver\LED;.\Driver\DHT_11;.\Driver\RTC_Alarm_Clock;.\Driver\NTC;.\App\App;.\App\App_oled</IncludePath>
             </VariousControls>
           </C51>
           <Ax51>
@@ -348,7 +336,7 @@
             <DataOverlaying>1</DataOverlaying>
             <OverlayString></OverlayString>
             <MiscControls></MiscControls>
-            <DisableWarningNumbers>15,16</DisableWarningNumbers>
+            <DisableWarningNumbers>15,16,17</DisableWarningNumbers>
             <LinkerCmdFile></LinkerCmdFile>
             <Assign></Assign>
             <ReserveString></ReserveString>
@@ -402,9 +390,24 @@
               <FilePath>.\App\App_Oscilloscope\App_Oscilloscope_Task.c</FilePath>
             </File>
             <File>
-              <FileName>App_Buzzer.c</FileName>
+              <FileName>App.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\App\App_Buzzer\App_Buzzer.c</FilePath>
+              <FilePath>.\App\App\App.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Buzzer_Task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Buzzer\App_Buzzer_Task.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_Oled_Task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_Oled\App_Oled_Task.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_DHT11_OLED_Task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_DHT11_OLED\App_DHT11_OLED_Task.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -472,29 +475,19 @@
               <FilePath>.\Driver\I2C_OLED\bmp.h</FilePath>
             </File>
             <File>
-              <FileName>oledfont.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Driver\I2C_OLED\oledfont.h</FilePath>
-            </File>
-            <File>
-              <FileName>DHT1.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\DHT_1\DHT1.c</FilePath>
-            </File>
-            <File>
-              <FileName>DHT1.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Driver\DHT_1\DHT1.h</FilePath>
-            </File>
-            <File>
               <FileName>Uarts.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\Uarts\Uarts.c</FilePath>
             </File>
             <File>
-              <FileName>LED.c</FileName>
+              <FileName>Pwm.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Driver\LED\LED.c</FilePath>
+              <FilePath>.\Driver\Pwm\Pwm.c</FilePath>
+            </File>
+            <File>
+              <FileName>Pwm.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\Pwm\Pwm.h</FilePath>
             </File>
             <File>
               <FileName>Buzzer.c</FileName>
@@ -502,14 +495,19 @@
               <FilePath>.\Driver\Buzzer\Buzzer.c</FilePath>
             </File>
             <File>
-              <FileName>Buzzer.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Driver\Buzzer\Buzzer.h</FilePath>
+              <FileName>LED.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\LED\LED.c</FilePath>
             </File>
             <File>
-              <FileName>LED.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Driver\LED\LED.h</FilePath>
+              <FileName>DHT_11.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\DHT_11\DHT_11.c</FilePath>
+            </File>
+            <File>
+              <FileName>NTC.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\NTC\NTC.c</FilePath>
             </File>
           </Files>
         </Group>

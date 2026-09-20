@@ -1,31 +1,50 @@
 #include "App_Public.h"
 #include "Key.h"
 #include "Buzzer.h"
+#include "NIXIE.h"
 #include "LED.h"
+#include "DHT_11.h"
+#include "NTC.h"
+#include "Uarts.h"
+#include "Oscilloscope.h"
 
+void Sys_Init(void) {
+	EA = 0;			// ¹Ø±ÕÈ«¾ÖÖĞ¶Ï ³õÊ¼»¯½áÊøºóÍ³Ò»¿ªÆô
+	EAXSFR();		/* À©Õ¹¼Ä´æÆ÷·ÃÎÊÊ¹ÄÜ */
 
-void sys_init(void) {
-	EA = 1;			// ä½¿èƒ½å…¨å±€ä¸­æ–­
-	EAXSFR();		/* æ‰©å±•å¯„å­˜å™¨è®¿é—®ä½¿èƒ½ */
-
-	Timers_Init();
-    Key_Init();
-	Buzzer_Init();
-	LED_Init();
+	/* ÍâÉè³õÊ¼»¯ */
+    Timers_Init();			// ¶¨Ê±Æ÷
+    Key_Init();				// ¶ÀÁ¢°´¼ü
+    Buzzer_Init();			// ·äÃùÆ÷
+    LED_Init();				// LEDµÆ
+    Nixie_init();			// ÊıÂë¹Ü
+    DHT11_Init();			// DHT11
+    NTC_init();				// NTC
+	Oscilloscope_init();	// µç»ú
+	
     
-    printf("==sys_init==\n");
+    Uarts_Init(UART_USE_1);	// ´®¿Ú
+
+	EA = 1;
+	printf("=====Sys_Init=====\r\n");
 }
 
-// è¿™é‡Œå‡½æ•°åå¯éšæ„, å»ºè®®ä¸è¦ä½¿ç”¨start, ä¼šå’ŒI2C.hé‡Œçš„Startå†²çª
-void main_start() _task_ App_Main_Task_Id {
-	sys_init();
-	// åˆ›å»ºä»»åŠ¡ 1
-	// os_create_task(1);
-	// ç»“æŸä»»åŠ¡ 0
-    os_create_task(App_Oscilloscope_Task_Id);
+// ÕâÀïº¯ÊıÃû¿ÉËæÒâ, ½¨Òé²»ÒªÊ¹ÓÃstart, »áºÍI2C.hÀïµÄStart³åÍ»
+void Main_Start() _task_ App_Main_Task_Id {
+	/* Í³Ò»³õÊ¼»¯Èë¿Ú */ 
+	Sys_Init();
+	
+	/* ´´½¨ÈÎÎñÈë¿Ú */
+    // os_create_task(SPI_OLED_Task_ID);		// SPIÏÔÊ¾
+    // os_create_task(I2C_OLED_Task_ID);		// I2CÏÔÊ¾
 
-	// åˆ›å»ºä»»åŠ¡ 7 -> èœ‚é¸£å™¨ + å°ç¯
-    os_create_task(App_Buzzer_Task_Id);
+    os_create_task(App_Oscilloscope_Task_Id);	// µç¶¯Âí´ï
+	os_create_task(App_Buzzer_Task_Id);			// ·äÃùÆ÷ + Ğ¡µÆ
 
-	os_delete_task(0);
+	
+	// os_create_task(App_Nixie_Task_Id);		// ÊıÂë¹ÜÏÔÊ¾
+	// os_create_task(App_DHT11_Task_Id);		// ÎÂÊª¶È¡ªI2C_OLED
+	
+	/* Ïú»ÙÈÎÎñ */
+    os_delete_task(0);
 }

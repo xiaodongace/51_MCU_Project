@@ -1,6 +1,8 @@
-#include "App.h"
-#include "SPI_OLED.h"
 #include "App_Public.h"
+#include "SPI_OLED.h"
+#include "I2C_OLED.h"
+#include "Oscilloscope.h"
+
 
 typedef struct {
     char name[16];
@@ -17,7 +19,9 @@ menu_item_t menu_items[] = {
     {"¼üÅÌ·äÃùÆ÷", "Keyboard-Beep"},
 }; 
 
-u8 clear_screen = 1;
+
+u8 count;
+
 
 void SPI_OLED_Task() _task_ SPI_OLED_Task_ID {
     char arr[32]="a";
@@ -37,11 +41,7 @@ void SPI_OLED_Task() _task_ SPI_OLED_Task_ID {
     }
 }
 
-void Clear_screen(u8 is_go_clear){
-    if(is_go_clear==1)
-        clear_screen=1;
-    os_send_signal(5);
-}
+
 
 void I2C_OLED_Task() _task_ I2C_OLED_Task_ID  {
     os_wait2(K_TMO, 200);

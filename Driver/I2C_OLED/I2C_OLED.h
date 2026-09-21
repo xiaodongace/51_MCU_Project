@@ -37,12 +37,26 @@ void I2C_OLED_Set_Pos(u8 x, u8 y);
 void I2C_OLED_Display_On(void);
 void I2C_OLED_Display_Off(void);
 void I2C_OLED_Clear(void);
-void I2C_OLED_ShowChar(u8 x,u8 y,u8 chr,u8 sizey);
 u32 I2C_OLED_pow(u8 m,u8 n);
-void I2C_OLED_ShowNum(u8 x,u8 y,u32 num,u8 len,u8 sizey);
-void I2C_OLED_ShowString(u8 x,u8 y,u8 *chr,u8 sizey);
-void I2C_OLED_ShowChinese(u8 x,u8 y,u8 no,u8 sizey);
+
+// 默认文字排版
+// void I2C_OLED_ShowChar(u8 x,u8 y,u8 chr,u8 sizey);
+// void I2C_OLED_ShowNum(u8 x,u8 y,u32 num,u8 len,u8 sizey);
+// void I2C_OLED_ShowString(u8 x,u8 y,u8 *chr,u8 sizey);
+// void I2C_OLED_ShowChinese(u8 x,u8 y,u8 no,u8 sizey);
 void I2C_OLED_DrawBMP(u8 x,u8 y,u8 sizex, u8 sizey,u8 BMP[]);
+
+// 自适应x轴文字自适应
+u8 I2C_OLED_ShowChar(u8 x,u8 y,u8 chr,u8 sizey);
+
+u8 I2C_OLED_ShowNum(u8 x,u8 y,u32 num,u8 len,u8 sizey);
+
+u8 I2C_OLED_ShowString(u8 x,u8 y,u8 *chr,u8 sizey);
+
+u8 I2C_OLED_ShowChinese(u8 x,u8 y,u8 no,u8 sizey);
+
+// u8 I2C_OLED_DrawBMP(u8 x,u8 y,u8 sizex, u8 sizey,u8 BMP[]);
+
 void I2C_OLED_Init(void);
 
 #endif

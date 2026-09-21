@@ -16,5 +16,6 @@
 #define SPI_OLED_Task_ID            6
 #define App_Buzzer_Task_Id          7  
 #define App_Keys_Task_Id            8
+#define App_Storage_RTC_Test_Id     9
 
 #endif

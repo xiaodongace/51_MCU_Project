@@ -1,5 +1,6 @@
 #include "Pwm.h"
 #include "Oscilloscope.h"
+#include "I2C_OLED.h"
 
 static void Oscilloscope_GPIO_config(void) {
     GPIO_InitTypeDef    GPIO_InitStructure;
@@ -53,4 +54,19 @@ void Motor_pwm_duty(u8* duty_percent)
     {
         *duty_percent = 0;
     }
+}
+
+u8 clear_screen = 1;
+u8 duty_percent = 0;
+
+void Clear_screen(u8 is_go_clear){
+    if(is_go_clear==1)
+        clear_screen=1;
+    os_send_signal(5);
+}
+
+void show_Oscilloscope(void) {
+    char str[24];
+    sprintf(str, "duty=%d%%",(int)duty_percent);
+    I2C_OLED_ShowString(0, 2, str, 16);
 }

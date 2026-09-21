@@ -186,7 +186,8 @@ void I2C_OLED_Clear(void)
 //x:0~127
 //y:0~63				 
 //sizey:选择字体 6x8  8x16
-void I2C_OLED_ShowChar(u8 x,u8 y,u8 chr,u8 sizey)
+// void I2C_OLED_ShowChar(u8 x,u8 y,u8 chr,u8 sizey)
+u8 I2C_OLED_ShowChar(u8 x,u8 y,u8 chr,u8 sizey)
 {      	
 	u8 c=0,sizex=sizey/2;
 	u16 i=0,size1;
@@ -200,8 +201,13 @@ void I2C_OLED_ShowChar(u8 x,u8 y,u8 chr,u8 sizey)
 		if(sizey==8) I2C_OLED_WR_Byte(asc2_0806[c][i],I2C_OLED_DATA);//6X8字号
 		else if(sizey==16) I2C_OLED_WR_Byte(asc2_1608[c][i],I2C_OLED_DATA);//8x16字号
 //		else if(sizey==xx) I2C_OLED_WR_Byte(asc2_xxxx[c][i],I2C_OLED_DATA);//用户添加字号
-		else return;
+		else return x;
 	}
+	// 添加返回值, 用于计算下一个字符的x坐标	
+	// 例如：x=10, sizey=16, 则下一个字符的x坐标为10+16=26
+	if(sizey==8) x+=6;
+	else x+=sizey/2;
+	return x;
 }
 //m^n函数
 u32 I2C_OLED_pow(u8 m,u8 n)
@@ -215,7 +221,8 @@ u32 I2C_OLED_pow(u8 m,u8 n)
 //num:要显示的数字
 //len :数字的位数
 //sizey:字体大小		  
-void I2C_OLED_ShowNum(u8 x,u8 y,u32 num,u8 len,u8 sizey)
+// void I2C_OLED_ShowNum(u8 x,u8 y,u32 num,u8 len,u8 sizey)
+u8 I2C_OLED_ShowNum(u8 x,u8 y,u32 num,u8 len,u8 sizey)
 {         	
 	u8 t,temp,m=0;
 	u8 enshow=0;
@@ -231,11 +238,17 @@ void I2C_OLED_ShowNum(u8 x,u8 y,u32 num,u8 len,u8 sizey)
 				continue;
 			}else enshow=1;
 		}
-	 	I2C_OLED_ShowChar(x+(sizey/2+m)*t,y,temp+'0',sizey);
+		I2C_OLED_ShowChar(x+(sizey/2+m)*t,y,temp+'0',sizey);
 	}
+	// 添加返回值, 用于计算下一个字符的x坐标	
+	// 例如: x=10, sizey=16, 则下一个字符的x坐标为10+16=26
+	if(sizey==8) x+=len*6;
+	else x+=len*(sizey/2);
+	return x;
 }
 //显示一个字符号串
-void I2C_OLED_ShowString(u8 x,u8 y,u8 *chr,u8 sizey)
+// void I2C_OLED_ShowString(u8 x,u8 y,u8 *chr,u8 sizey)
+u8 I2C_OLED_ShowString(u8 x,u8 y,u8 *chr,u8 sizey)
 {
 	u8 j=0;
 	while (chr[j]!='\0')
@@ -244,18 +257,25 @@ void I2C_OLED_ShowString(u8 x,u8 y,u8 *chr,u8 sizey)
 		if(sizey==8)x+=6;
 		else x+=sizey/2;
 	}
+	// 添加返回值, 用于计算下一个字符的x坐标	
+	// 例如：x=10, sizey=16, 则下一个字符的x坐标为10+16=26
+	return x;
 }
 //显示汉字
-void I2C_OLED_ShowChinese(u8 x,u8 y,u8 no,u8 sizey)
+// void I2C_OLED_ShowChinese(u8 x,u8 y,u8 no,u8 sizey)
+u8 I2C_OLED_ShowChinese(u8 x,u8 y,u8 no,u8 sizey)
 {
 	u16 i,size1=(sizey/8+((sizey%8)?1:0))*sizey;
 	for(i=0;i<size1;i++)
 	{
 		if(i%sizey==0) I2C_OLED_Set_Pos(x,y++);
 		if(sizey==16) I2C_OLED_WR_Byte(Hzk[no][i],I2C_OLED_DATA);//16x16字号
-//		else if(sizey==xx) I2C_OLED_WR_Byte(xxx[c][i],I2C_OLED_DATA);//用户添加字号
-		else return;
-	}				
+		// else if(sizey==xx) I2C_OLED_WR_Byte(xxx[c][i],I2C_OLED_DATA);//用户添加字号
+		else return x;
+	}	
+	// 添加返回值, 用于计算下一个字符的x坐标	
+	// 例如: x=10, sizey=16, 则下一个字符的x坐标为10+16=26
+	return x+sizey;
 }
 
 
@@ -264,8 +284,9 @@ void I2C_OLED_ShowChinese(u8 x,u8 y,u8 no,u8 sizey)
 //sizex,sizey,图片长宽
 //BMP：要显示的图片
 void I2C_OLED_DrawBMP(u8 x,u8 y,u8 sizex, u8 sizey,u8 BMP[])
+// u8 I2C_OLED_DrawBMP(u8 x,u8 y,u8 sizex, u8 sizey,u8 BMP[])
 { 	
-  u16 j=0;
+	u16 j=0;
 	u8 i,m;
 	sizey=sizey/8+((sizey%8)?1:0);
 	for(i=0;i<sizey;i++)
@@ -276,6 +297,9 @@ void I2C_OLED_DrawBMP(u8 x,u8 y,u8 sizex, u8 sizey,u8 BMP[])
 			I2C_OLED_WR_Byte(BMP[j++],I2C_OLED_DATA);	    	
 		}
 	}
+	// 添加返回值, 用于计算下一个字符的x坐标	
+	// 例如: x=10, sizey=16, 则下一个字符的x坐标为10+16=26
+	// return x+sizey;
 } 
 
 static void	I2C_config(void)

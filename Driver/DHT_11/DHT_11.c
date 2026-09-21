@@ -1,5 +1,5 @@
 #include "DHT_11.h"
-
+#include "Timers.h"
 
 void I2C_GPIO(void)
 {
@@ -34,7 +34,10 @@ int8 on_read_dht11(u8 dat[]){
         printf("err: 时间[%dus], 不满足 主机释放总线时间[%dus, %dus]\n", cnt, (int)6, (int)35); 
         return -1;
     }
-
+    
+    // 关闭定时器
+    NVIC_Timer3_Init(DISABLE,Priority_0);
+    
     // 3、响应低电平时间 83us, [78, 88]us, 当前0, 直到1, 结束循环
     wait_level_change(0, 78, 88, "响应低电平时间");
 
@@ -64,6 +67,7 @@ int8 on_read_dht11(u8 dat[]){
             }
         }
     }
+    NVIC_Timer3_Init(ENABLE,Priority_0);
 
     // 主机拉高释放总线(可选)
     DHT = 1;

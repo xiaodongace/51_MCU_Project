@@ -2,7 +2,6 @@
 #define __SPI_OLED_H
 
 #include "Config.h"
-#include "delay.h"
 
 sbit SPI_OLED_SCL=P5^0;   // SCLK
 sbit SPI_OLED_SDA=P1^3;   // MOSI
@@ -44,7 +43,7 @@ void SPI_OLED_Display_5x7(u8 x,u8 y,u8 *dp);
 void Send_Command_to_ROM(u8 dat);
 u8 Get_data_from_ROM(void);
 void SPI_OLED_get_data_from_ROM(u8 addrHigh,u8 addrMid,u8 addrLow,u8 *pbuff,u8 DataLen);
-void SPI_OLED_Display_GB2312_string(u8 x,u8 y,u8 *text);
+void SPI_OLED_Display_GB2312_string(u8 x,u8 y,u8 code *text);
 void SPI_OLED_Display_string_5x7(u8 x,u8 y,u8 *text);
 void SPI_OLED_ShowNum(u8 x,u8 y,float num,u8 len);
 void SPI_OLED_Init(void);

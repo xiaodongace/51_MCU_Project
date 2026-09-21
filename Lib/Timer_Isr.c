@@ -11,7 +11,7 @@
 /*---------------------------------------------------------------------*/
 
 #include	"Timer.h"
-#include "NIXIE.h"
+#include "App_Menu.h"
 #include "NIXIE.h"
 
 extern volatile u16 system_ms;
@@ -78,7 +78,14 @@ void Timer3_ISR_Handler (void) interrupt TMR3_VECTOR		//??????????
 
     if (refresh_div >= 2) {
         refresh_div = 0;
-        Nixie_Refresh();
+
+        /*
+         * 非蜂鸣器页面由Timer3中断扫描日期/时间显示
+         * 蜂鸣器页面停止中断刷新 避免与Nixie_Run()交叉写移位寄存器
+         */
+        if (current_page != PAGE_BUZZER) {
+            Nixie_Refresh();
+        }
     }
 	
 	// Nixie_display(display_buf[display_index],display_index);

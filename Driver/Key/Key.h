@@ -5,32 +5,37 @@
 #include "Timers.h"
 
 /*
- * 初始化按键GPIO及公共非阻塞消抖状态
+ * 初始化四个独立按键和消抖状态
  */
 void Key_Init(void);
 
-
 /*
- * 扫描所有按键并用系统时间执行非阻塞消抖
- * 函数只更新按键状态并产生事件
+ * 周期扫描四个按键
+ * 这个函数只能由菜单任务调用
  */
 void Key_Scan(void);
 
-
 /*
- * 读取并消费指定按键的一次性按下事件
- * 返回1表示取得一个新事件
- * 事件读取后立即清零
- * 按住按键不会重复触发
+ * 获取按下事件
+ * 按键完成消抖并确认按下时产生一次
  */
 u8 Key_GetPressEvent(u8 key_index);
 
+/*
+ * 获取短按事件
+ * 按下时间小于长按阈值，并且松开时产生一次
+ */
+u8 Key_GetShortPressEvent(u8 key_index);
 
 /*
- * 查询按键当前是否被按下
- * 非零为按下 0 为松开
+ * 获取长按事件
+ * 按住达到指定时间时产生一次
+ */
+u8 Key_GetLongPressEvent(u8 key_index);
+
+/*
+ * 查询按键当前物理电平是否为按下
  */
 u8 Key_IsPressed(u8 key_index);
-
 
 #endif

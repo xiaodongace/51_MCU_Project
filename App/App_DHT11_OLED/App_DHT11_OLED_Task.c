@@ -1,8 +1,5 @@
 #include "App_Public.h"
-#include "App_Menu.h"
-#include "I2C_OLED.h"
-#include "DHT_11.h"
-#include <stdio.h>
+
 
 /* DHT11建议的采样间隔，单位为毫秒 */
 #define DHT11_SAMPLE_INTERVAL_MS 1000

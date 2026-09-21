@@ -2,7 +2,7 @@
 #include "Buzzer.h"
 #include "Key.h"
 #include "LED.h"
-#include "SPI_OLED.h"
+
 
 /* 按键编号 */
 #define MENU_KEY_NEXT 0
@@ -344,13 +344,13 @@ void App_Menu_Task() _task_ App_Menu_Task_Id {
      * 菜单任务负责初始化SPI屏幕，
      * 这样不需要再创建原来的SPI_OLED_Task。
      */
-    SPI_OLED_Init();
+//    SPI_OLED_Init();
 
-    /* 使用正常显示颜色 */
-    SPI_OLED_ColorTurn(0);
+//    /* 使用正常显示颜色 */
+//    SPI_OLED_ColorTurn(0);
 
-    /* 使用正常显示方向 */
-    SPI_OLED_DisplayTurn(0);
+//    /* 使用正常显示方向 */
+//    SPI_OLED_DisplayTurn(0);
 
     /* 开机绘制第一次菜单 */
     Menu_Refresh();

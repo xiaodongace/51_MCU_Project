@@ -9,6 +9,8 @@
 #include "Oscilloscope.h"
 #include "Storage.h"
 #include "Alarmclock.h"
+#include "MATH.h"
+
 
 /*
  * 系统硬件初始化。
@@ -44,15 +46,22 @@ void Sys_Init(void) {
     // NTC_init();
     // Oscilloscope_init();
     // PCF8563_Init();
-
+    
+    //=============================================开机动画
+    SPI_OLED_Init();
+    SPI_OLED_ColorTurn(0);    // 0正常显示，1 反色显示
+    SPI_OLED_DisplayTurn(0); // 0正常显示 1 屏幕翻转显示
+    //=============================================开机动画
+    
+    Animation_Expand();
+    Animation_Contract();
+    
     /* 初始化UART1，用于调试信息输出 */
     Uarts_Init(UART_USE_1);
 
     /* 所有基础外设就绪后开启全局中断 */
     EA = 1;
-
-    /* 输出启动完成标志 */
-    printf("=====Sys_Init=====\r\n");
+    
 }
 
 /*

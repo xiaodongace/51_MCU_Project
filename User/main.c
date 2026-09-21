@@ -38,11 +38,11 @@ void Main_Start() _task_ App_Main_Task_Id {
     // os_create_task(SPI_OLED_Task_ID);		// SPI显示
     // os_create_task(I2C_OLED_Task_ID);		// I2C显示
 
-    os_create_task(App_Oscilloscope_Task_Id);	// 电动马达
-	os_create_task(App_Buzzer_Task_Id);			// 蜂鸣器 + 小灯
+//    os_create_task(App_Oscilloscope_Task_Id);	// 电动马达
+//	os_create_task(App_Buzzer_Task_Id);			// 蜂鸣器 + 小灯
 
 	
-	// os_create_task(App_Nixie_Task_Id);		// 数码管显示
+	os_create_task(App_Nixie_Task_Id);		// 数码管显示
 	// os_create_task(App_DHT11_Task_Id);		// 温湿度—I2C_OLED
 	
 	/* 销毁任务 */

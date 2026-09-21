@@ -12,22 +12,6 @@
 		NIXIE_RCK = 1;		\
 		NOP_TIME();
 
-/* 8个数码管显示的数字 */		
-volatile u8 nixie_digits[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-volatile u8 nixie_scan_pos = 0;
-
-void Nixie_Refresh(void)
-{
-    Nixie_display(nixie_digits[nixie_scan_pos],
-                  nixie_scan_pos);
-
-    nixie_scan_pos++;
-
-    if (nixie_scan_pos >= 8) {
-        nixie_scan_pos = 0;
-    }
-}
-
 // 初始化
 void Nixie_init(){
 	NIXIE_PIN_INIT();
@@ -65,8 +49,10 @@ u8 code LED_TABLE[] =
     0x40,0x79,0x24,0x30,0x19,0x12,0x02,0x78,0x00,0x10,
 	// . -						(索引20,21)
 	0x7F, 0xBF,
-	// AbCdEFHJLPqU		(索引22,23,24....33)
-	0x88,0x83,0xC6,0xA1,0x86,0x8E,0x89,0xF1,0xC7,0x8C,0x98,0xC1
+//	// AbCdEFHJLPqU		(索引22,23,24....33)
+//	0x88,0x83,0xC6,0xA1,0x86,0x8E,0x89,0xF1,0xC7,0x8C,0x98,0xC1
+	// 空白 (索引22)
+		0xFF
 };
 
 // 显示函数
@@ -135,6 +121,88 @@ void Nixie_Run() {
     }
 }
 
+
+/* 日期页面：20260920 */
+volatile u8 date_page[8] = {
+    2, 0, 2, 16, 0, 19, 2, 10
+};
+
+void Nixie_SetDigits(u8 *digits)
+{
+    u8 i;
+    u8 old_ea = EA;
+
+    EA = 0;
+
+    for(i = 0; i < 8; i++)
+    {
+        nixie_digits[i] = digits[i];
+    }
+
+    EA = old_ea;
+}
+
+u8 hour = 14;
+u8 minute = 59;
+u8 second = 50;
+
+/* 时间页面 */
+volatile u8 time_page[8];
+
+void Update_Time_Page(void)
+{
+		time_page[2] = 21;
+    time_page[5] = 21;
+	
+    time_page[0] = hour / 10;
+    time_page[1] = hour % 10;
+
+    time_page[3] = minute / 10;
+    time_page[4] = minute % 10;
+
+    time_page[6] = second / 10;
+    time_page[7] = second % 10; 
+}
+
+/* 时钟递增 */
+void Clock_Update(void)
+{
+    second++;
+
+    if(second >= 60)
+    {
+        second = 0;
+        minute++;
+
+        if(minute >= 60)
+        {
+            minute = 0;
+            hour++;
+
+            if(hour >= 24)
+            {
+                hour = 0;
+            }
+        }
+    }
+}
+
+///* 8个数码管显示的数字 */		
+volatile u8 nixie_digits[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile u8 nixie_scan_pos = 0;
+
+void Nixie_Refresh(void)
+{
+    Nixie_display(nixie_digits[nixie_scan_pos],
+                  nixie_scan_pos);
+
+    nixie_scan_pos++;
+
+    if (nixie_scan_pos >= 8) {
+        nixie_scan_pos = 0;
+    }
+}
+
 /*
 	后续可以使用RTC时钟获取时间
 	u32 date_value;
@@ -144,17 +212,17 @@ void Nixie_Run() {
 
 	Nixie_SetNumber(date_value);
 */
-void Nixie_SetNumber(u32 number) {
-    u8 i;
-    u8 old_ea = EA;
+//void Nixie_SetNumber(u32 number) {
+//    u8 i;
+//    u8 old_ea = EA;
 
-    EA = 0;
-    for (i = 0; i < 8; i++) {
-        nixie_digits[7 - i] = (u8)(number % 10UL);
-        number /= 10UL;
-    }
-    EA = old_ea;
-}
+//    EA = 0;
+//    for (i = 0; i < 8; i++) {
+//        time_page[7 - i] = (u8)(number % 10UL);
+//        number /= 10UL;
+//    }
+//    EA = old_ea;
+//}
 
 // 关闭数码管显示: 段码 0xFF 熄灭所有段(本板段码 0 为点亮), 位选 0x00 不选任何位
 void Nixie_Close() {

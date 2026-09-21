@@ -34,6 +34,16 @@ void Nixie_Run();
 // 关闭数码管显示
 void Nixie_Close();
 
+/* 时钟递增 */
+void Clock_Update();
+
+extern volatile u8 nixie_digits[8];
+extern volatile u8 date_page[8];
+extern volatile u8 time_page[8];
+
+void Nixie_SetDigits(u8 *digits);
+/* 更新时间显示内容 */
+void Update_Time_Page();
 
 #endif
 

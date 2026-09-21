@@ -219,12 +219,14 @@
             <hadXRAM2>0</hadXRAM2>
             <uocXram2>0</uocXram2>
             <hadXRAM3>0</hadXRAM3>
+            <hadXRAM3>0</hadXRAM3>
             <ModC2>0</ModC2>
             <ModH2>0</ModH2>
             <Mdu_R515>0</Mdu_R515>
             <Mdu_F120>0</Mdu_F120>
             <Psoc>0</Psoc>
             <hadIROM2>0</hadIROM2>
+            <hadIROM3>0</hadIROM3>
             <hadIROM3>0</hadIROM3>
             <ModSmx2>0</ModSmx2>
             <cBanks>0</cBanks>
@@ -305,6 +307,16 @@
                 <StartAddress>0x0</StartAddress>
                 <Size>0x0</Size>
               </IROM513>
+              <XRA513>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </XRA513>
+              <IROM513>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </IROM513>
             </OnChipMemories>
           </Target51Misc>
           <C51>
@@ -324,6 +336,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
+              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Buzzer;.\Driver\NIXIE;.\Driver\LED;.\Driver\DHT_11;.\Driver\NTC;.\Driver\Uarts;.\Driver\Oscilloscope;.\Driver\RTC_Alarm_Clock;.\Driver\Storage;.\Driver\Pwm</IncludePath>
               <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Buzzer;.\Driver\NIXIE;.\Driver\LED;.\Driver\DHT_11;.\Driver\NTC;.\Driver\Uarts;.\Driver\Oscilloscope;.\Driver\RTC_Alarm_Clock;.\Driver\Storage;.\Driver\Pwm</IncludePath>
             </VariousControls>
           </C51>
@@ -348,6 +361,7 @@
             <DataOverlaying>1</DataOverlaying>
             <OverlayString></OverlayString>
             <MiscControls></MiscControls>
+            <DisableWarningNumbers>15,16</DisableWarningNumbers>
             <DisableWarningNumbers>15,16</DisableWarningNumbers>
             <LinkerCmdFile></LinkerCmdFile>
             <Assign></Assign>
@@ -445,15 +459,23 @@
               <FileName>Storage.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\Storage\Storage.c</FilePath>
+              <FileName>Storage.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Storage\Storage.c</FilePath>
             </File>
             <File>
+              <FileName>Buzzer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Buzzer\Buzzer.c</FilePath>
               <FileName>Buzzer.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\Buzzer\Buzzer.c</FilePath>
             </File>
             <File>
               <FileName>NIXIE.c</FileName>
+              <FileName>NIXIE.c</FileName>
               <FileType>1</FileType>
+              <FilePath>.\Driver\NIXIE\NIXIE.c</FilePath>
               <FilePath>.\Driver\NIXIE\NIXIE.c</FilePath>
             </File>
             <File>
@@ -463,7 +485,9 @@
             </File>
             <File>
               <FileName>DHT_11.c</FileName>
+              <FileName>DHT_11.c</FileName>
               <FileType>1</FileType>
+              <FilePath>.\Driver\DHT_11\DHT_11.c</FilePath>
               <FilePath>.\Driver\DHT_11\DHT_11.c</FilePath>
             </File>
             <File>
@@ -580,6 +604,21 @@
               <FileName>UART_Isr.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Lib\UART_Isr.c</FilePath>
+            </File>
+            <File>
+              <FileName>EEPROM.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Lib\EEPROM.c</FilePath>
+            </File>
+            <File>
+              <FileName>Exti.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Lib\Exti.c</FilePath>
+            </File>
+            <File>
+              <FileName>Exti_Isr.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Lib\Exti_Isr.c</FilePath>
             </File>
             <File>
               <FileName>EEPROM.c</FileName>

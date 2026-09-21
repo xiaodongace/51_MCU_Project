@@ -8,9 +8,9 @@
 #include "App_Public.h"
 
 u8 duty_percent=0;
-void test_task4() _task_ App_Oscilloscope_Task_Id {
+void App_Oscilloscope_Task() _task_ App_Oscilloscope_Task_Id {
 
-    Oscilloscope_init();
+    
     while(1){
         Clear_screen(0);
       
@@ -24,6 +24,11 @@ void show_Oscilloscope(void) {
     char str[24];
     sprintf(str, "duty=%d%%",(int)duty_percent);
     I2C_OLED_ShowString(0, 2, str, 16);
+}
+
+void delete_Oscilloscope(void){
+    //关闭小马达；
+    //将屏幕占空比改为0；
 }
 
 

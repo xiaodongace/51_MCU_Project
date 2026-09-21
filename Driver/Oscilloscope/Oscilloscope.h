@@ -4,7 +4,7 @@
 #include "App_Public.h"
 #include "Uarts.h"
 
-#define PERIOD (MAIN_Fosc / 1000)  
+#define PERIOD (MAIN_Fosc / 1000)   // PWM???????????? = MAIN_Fosc / PERIOD = 1kHz
 
 void Oscilloscope_init(void);
 

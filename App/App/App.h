@@ -7,7 +7,6 @@
 #include "I2C_OLED.h"
 #include "SPI_OLED.h"
 
-#define PERIOD (MAIN_Fosc / 1000)
 
 extern int8 count;
 

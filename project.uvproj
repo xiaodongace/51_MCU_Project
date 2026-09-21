@@ -324,7 +324,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Oscilloscope;.\Driver\NIXIE;.\Driver\Uarts;.\Driver\Pwm;.\Driver\Buzzer;.\Driver\LED;.\Driver\DHT_11;.\Driver\RTC_Alarm_Clock;.\Driver\NTC;.\App\App;.\App\App_oled</IncludePath>
+              <IncludePath>.\App;.\Driver;.\Lib;.\User;.\OS;.\Driver\I2C_OLED;.\Driver\SPI_OLED;.\Driver\Key;.\Driver\Timers;.\Driver\Buzzer;.\Driver\NIXIE;.\Driver\LED;.\Driver\DHT_11;.\Driver\NTC;.\Driver\Uarts;.\Driver\Oscilloscope;.\Driver\RTC_Alarm_Clock;.\Driver\Storage;.\Driver\Pwm</IncludePath>
             </VariousControls>
           </C51>
           <Ax51>
@@ -348,7 +348,7 @@
             <DataOverlaying>1</DataOverlaying>
             <OverlayString></OverlayString>
             <MiscControls></MiscControls>
-            <DisableWarningNumbers>15,16,17</DisableWarningNumbers>
+            <DisableWarningNumbers>15,16</DisableWarningNumbers>
             <LinkerCmdFile></LinkerCmdFile>
             <Assign></Assign>
             <ReserveString></ReserveString>
@@ -421,6 +421,11 @@
               <FileType>1</FileType>
               <FilePath>.\App\App_DHT11_OLED\App_DHT11_OLED_Task.c</FilePath>
             </File>
+            <File>
+              <FileName>App_keys.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\App_oled\App_keys.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -457,49 +462,14 @@
               <FilePath>.\Driver\Timers\Timers.c</FilePath>
             </File>
             <File>
-              <FileName>Oscilloscope.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\Oscilloscope\Oscilloscope.c</FilePath>
-            </File>
-            <File>
-              <FileName>NIXIE.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\NIXIE\NIXIE.c</FilePath>
-            </File>
-            <File>
-              <FileName>NIXIE.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Driver\NIXIE\NIXIE.h</FilePath>
-            </File>
-            <File>
               <FileName>Alarmclock.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\RTC_Alarm_Clock\Alarmclock.c</FilePath>
             </File>
             <File>
-              <FileName>Alarmclock.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Driver\RTC_Alarm_Clock\Alarmclock.h</FilePath>
-            </File>
-            <File>
-              <FileName>bmp.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Driver\I2C_OLED\bmp.h</FilePath>
-            </File>
-            <File>
-              <FileName>Uarts.c</FileName>
+              <FileName>Storage.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Driver\Uarts\Uarts.c</FilePath>
-            </File>
-            <File>
-              <FileName>Pwm.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Driver\Pwm\Pwm.c</FilePath>
-            </File>
-            <File>
-              <FileName>Pwm.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Driver\Pwm\Pwm.h</FilePath>
+              <FilePath>.\Driver\Storage\Storage.c</FilePath>
             </File>
             <File>
               <FileName>Buzzer.c</FileName>
@@ -507,9 +477,14 @@
               <FilePath>.\Driver\Buzzer\Buzzer.c</FilePath>
             </File>
             <File>
-              <FileName>LED.c</FileName>
+              <FileName>NIXIE.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Driver\LED\LED.c</FilePath>
+              <FilePath>.\Driver\NIXIE\NIXIE.c</FilePath>
+            </File>
+            <File>
+              <FileName>Pwm.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Pwm\Pwm.c</FilePath>
             </File>
             <File>
               <FileName>DHT_11.c</FileName>
@@ -517,9 +492,24 @@
               <FilePath>.\Driver\DHT_11\DHT_11.c</FilePath>
             </File>
             <File>
+              <FileName>LED.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\LED\LED.c</FilePath>
+            </File>
+            <File>
               <FileName>NTC.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\NTC\NTC.c</FilePath>
+            </File>
+            <File>
+              <FileName>Oscilloscope.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Oscilloscope\Oscilloscope.c</FilePath>
+            </File>
+            <File>
+              <FileName>Uarts.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\Uarts\Uarts.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -605,6 +595,21 @@
               <FileName>UART_Isr.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Lib\UART_Isr.c</FilePath>
+            </File>
+            <File>
+              <FileName>EEPROM.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Lib\EEPROM.c</FilePath>
+            </File>
+            <File>
+              <FileName>Exti.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Lib\Exti.c</FilePath>
+            </File>
+            <File>
+              <FileName>Exti_Isr.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Lib\Exti_Isr.c</FilePath>
             </File>
           </Files>
         </Group>

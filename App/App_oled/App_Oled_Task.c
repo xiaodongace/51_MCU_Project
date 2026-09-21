@@ -17,10 +17,9 @@ menu_item_t menu_items[] = {
     {"¼üÅÌ·äÃùÆ÷", "Keyboard-Beep"},
 }; 
 
-int8 count;
 u8 clear_screen = 1;
 
-void test_task5() _task_ SPI_OLED_Task_ID {
+void SPI_OLED_Task() _task_ SPI_OLED_Task_ID {
     char arr[32]="a";
     int8 i;
     SPI_OLED_Init();
@@ -44,7 +43,7 @@ void Clear_screen(u8 is_go_clear){
     os_send_signal(5);
 }
 
-void test_task6() _task_ I2C_OLED_Task_ID  {
+void I2C_OLED_Task() _task_ I2C_OLED_Task_ID  {
     os_wait2(K_TMO, 200);
     I2C_OLED_Init();
     I2C_OLED_ColorTurn(0);

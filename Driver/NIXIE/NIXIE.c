@@ -224,10 +224,12 @@ void Nixie_Refresh(void)
 //    EA = old_ea;
 //}
 
-// 关闭数码管显示: 段码 0xFF 熄灭所有段(本板段码 0 为点亮), 位选 0x00 不选任何位
-void Nixie_Close() {
-	// 关闭数码管显示
-	// Nixie_show(0xFF, 0x00);
-	// 直接关闭引脚
-	P4M0 &= ~0x1c; P4M1 |= 0x1c;
+/*
+ * 关闭数码管显示。
+ * 只向移位寄存器发送全灭数据，不改变GPIO模式，
+ * 因此后续调用Nixie_Refresh()或Nixie_Run()可以直接恢复显示。
+ */
+void Nixie_Close(void) {
+		/* 段码0xFF为全灭，位选0x00为不选择任何位 */
+		Nixie_show(0xFF, 0x00);
 }

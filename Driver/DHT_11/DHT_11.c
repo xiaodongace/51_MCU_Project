@@ -1,130 +1,143 @@
 #include "DHT_11.h"
-#include "Timers.h"
 
-void I2C_GPIO(void)
-{
-    P4_MODE_IO_PU(GPIO_Pin_6);
-    P5_MODE_OUT_OD(GPIO_Pin_3);
-    P3_MODE_OUT_OD(GPIO_Pin_2 | GPIO_Pin_3);
-    P3_MODE_IO_PU(GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_7);
-}
+/*
+ * 等待DHT11总线从指定电平发生变化。
+ * 超过最大时间仍未变化时跳转到统一清理位置，确保中断一定会恢复。
+ */
+#define DHT11_WAIT_LEVEL_CHANGE(level, min_us, max_us)          \
+    do {                                                        \
+        cnt = 0;                                                \
+        while (DHT == (level) && cnt <= (max_us)) {            \
+            DHT11_DELAY_1US();                                  \
+            cnt++;                                              \
+        }                                                       \
+        if (cnt < (min_us) || cnt > (max_us)) {                \
+            result = -2;                                        \
+            goto read_finish;                                   \
+        }                                                       \
+    } while (0)
 
+/*
+ * 读取DHT11原始的5字节数据。
+ * 精确接收40位数据期间临时关闭总中断，避免RTX节拍打断单总线时序。
+ */
+static int8 DHT11_ReadRaw(u8 dat[5]) {
+    u16 data cnt;
+    int8 i;
+    int8 j;
+    int8 result;
+    u8 old_ea;
 
+    /* 默认读取成功，出现时序或校验错误时再修改结果 */
+    result = SUCCESS;
+    old_ea = EA;
 
-// 初始化P3引脚
-int8 on_read_dht11(u8 dat[]){
-    u16 data cnt = 0; // 计数器, 每+1, 代表时间过了1us
-    int8 i, j;
-
-    // 1、主机发起起始信号: 拉低 18ms, 30ms
+    /* 主机拉低总线至少18ms，通知DHT11开始发送数据 */
     DHT = 0;
     os_wait2(K_TMO, 4);
 
+    /* 释放总线并立即进入精确时序接收阶段 */
     DHT = 1;
+    EA = 0;
 
-    // 2、主机释放总线 (13us, 35us)
-	cnt = 0; // 确保开始是0, 同时, 也让DHT有时间真正拉起来
-    while(DHT == 1 && cnt < 45) {
-        // 每循环一次,代表过去了1us,通过cnt记录时间
-        delay_1us();
+    /* 等待传感器把总线从高电平拉低作为响应 */
+    cnt = 0;
+    while (DHT == 1 && cnt < 45) {
+        DHT11_DELAY_1US();
         cnt++;
     }
-    // 如果不符合目标范围, 及时短路返回, 避免代码嵌套
-    if(cnt < 6 || cnt > 35) {
-        printf("err: 时间[%dus], 不满足 主机释放总线时间[%dus, %dus]\n", cnt, (int)6, (int)35); 
-        return -1;
+
+    /* 没有在合理时间内收到响应，认为传感器未连接或通信失败 */
+    if (cnt < 6 || cnt > 35) {
+        result = -1;
+        goto read_finish;
     }
-    
-    // 关闭定时器
-    NVIC_Timer3_Init(DISABLE,Priority_0);
-    
-    // 3、响应低电平时间 83us, [78, 88]us, 当前0, 直到1, 结束循环
-    wait_level_change(0, 78, 88, "响应低电平时间");
 
-    // 4、响应高电平时间 87us, [78, 95]us, 当前1, 直到0, 结束循环
-    wait_level_change(1, 78, 95, "响应高电平时间");
+    /* 检查DHT11约80us的响应低电平 */
+    DHT11_WAIT_LEVEL_CHANGE(0, 65, 100);
 
-    // 5、解析40bit的数据(5Byte * 8bit)
-    // 外循环: 1次, 接收处理1个byte字节(一共5个字节)
-    for(i = 0; i < 5; i++){ // 0,1,2,3,4
+    /* 检查DHT11约80us的响应高电平 */
+    DHT11_WAIT_LEVEL_CHANGE(1, 65, 105);
 
-        // 内循环: 1次, 接收处理1个bit位(每个字节8bit)
-        for(j = 7; j >= 0; j--){ // 7,6,5,4,2,1,0 先收到高位
-            // 一个bit信号由一低一高的电平组成: 低电平一样长(54us), 区别在于高电平
+    /* 接收5字节、共40位数据，高位在前 */
+    for (i = 0; i < 5; i++) {
+        for (j = 7; j >= 0; j--) {
+            /* 每一位先等待约50us低电平结束 */
+            DHT11_WAIT_LEVEL_CHANGE(0, 35, 70);
 
-            // 数据信号: 低电平时间 54us [50, 58]us 当前0, 直到1
-            wait_level_change(0, 40, 62, "Data信号低电平时间");
+            /* 再测量高电平宽度，以约47us为0和1的分界 */
+            DHT11_WAIT_LEVEL_CHANGE(1, 15, 90);
 
-            // 数据信号: 高电平时间 [23, 74]us 当前1, 直到0
-            wait_level_change(1, 20, 74, "Data信号高电平时间");
-
-            // 通过高电平时长cnt, 区分是0还是1 (是0就不管, 默认dat存的都是0)
-            // (24 + 71) / 2 = 47.5
-
-            // 信号1: 指定置1
-            if(cnt > 47) {
-                dat[i] |= ( 1 << j ); 
-            }
+            /* 高电平较长表示本位数据为1 */
+            if (cnt > 47)
+                dat[i] |= (1 << j);
         }
     }
-    NVIC_Timer3_Init(ENABLE,Priority_0);
 
-    // 主机拉高释放总线(可选)
+    /* 校验位应等于前4字节之和的低8位 */
+    if (((dat[0] + dat[1] + dat[2] + dat[3]) & 0xFF) !=
+        dat[4]) {
+        result = -3;
+    }
+
+read_finish:
+    /* 无论成功还是失败，都先释放DHT11总线 */
     DHT = 1;
 
-    printf("cnt -> %d us\n", cnt);
-    // 打印5个字节的数据
-    printf("dat-> ");
-    for(i = 0; i < 5; i++){
-        printf("%d ", (int)dat[i]);
-    }
-    printf("\n");
-    
-    // 校验数据: 8bit 湿度整数数据 + 8bit 湿度小数数据 + 8bit 温度整数数据 + 8bit 温度小数数据”8bit 校验位等于所得结果的末 8 位。
-    if(((dat[0] + dat[1] + dat[2] + dat[3]) & 0xFF) != dat[4]){
-        printf("校验失败: %d!\n", (int)__LINE__);
-        return -3;
-    }
-    
-    printf("校验通过: %d!\n", (int)__LINE__);
+    /* 恢复进入读取函数前的总中断状态 */
+    EA = old_ea;
 
-    return 0;
+    return result;
 }
 
+/*
+ * 初始化DHT11单总线。
+ * 这里只配置P4.6，不能修改P5.3等按键或I2C OLED引脚。
+ */
+void DHT11_Init(void) {
+    /* P4.6配置为带上拉的准双向口 */
+    P4_MODE_IO_PU(GPIO_Pin_6);
 
-void DHT11_Init() {
-    // P4M0 &= ~0x1c; P4M1 |= 0x1c;
-    I2C_GPIO();
+    /* 空闲状态释放总线 */
+    DHT = 1;
 }
 
-int8 DHT11_get_info(float* p_humidity, float* p_temperature) {
-    float humidity; // 湿度
-    float temperature; // 温度    
-    int8 rst; // rst -> result 
-    u8 dat[5] = {0x00, 0x00, 0x00, 0x00, 0x00};
-    
-    rst = on_read_dht11(dat);
+/*
+ * 读取并换算DHT11湿度和温度。
+ */
+int8 DHT11_get_info(
+    float *p_humidity,
+    float *p_temperature) {
+    u8 dat[5];
+    int8 result;
+    float humidity;
+    float temperature;
 
-    if(rst != SUCCESS){
-        printf("读取温湿度信息失败, 错误码: %d\n", (int) rst);
-        return rst; 
-    }
-    // 湿度高8位为 整数部分数据
-    humidity = dat[0];
+    /* 每次读取前把接收缓冲区清零 */
+    dat[0] = 0;
+    dat[1] = 0;
+    dat[2] = 0;
+    dat[3] = 0;
+    dat[4] = 0;
 
-    // 模拟负温度
-    // dat[3] |= (1 << 7);
+    /* 获取DHT11原始数据 */
+    result = DHT11_ReadRaw(dat);
+    if (result != SUCCESS)
+        return result;
 
-    // 温度高8位 整数部分, 低8位 小数部分
-    // 整数部分 + 小数部分(低7位) * 0.1
+    /* 湿度由整数部分和一位小数组成 */
+    humidity = dat[0] + dat[1] * 0.1f;
+
+    /* 温度由整数部分和一位小数组成 */
     temperature = dat[2] + (dat[3] & 0x7F) * 0.1f;
 
-    // 如果温度最高位是1, 表示温度为负
-    if((dat[3] >> 7) & 0x01){ // dat[3] & 0x80 == 0x80
-        temperature *= -1;    // 取反, 变负数
-    }
+    /* 小数字节最高位为1时表示负温度 */
+    if (dat[3] & 0x80)
+        temperature = -temperature;
+
+    /* 将换算结果写回调用者 */
     *p_humidity = humidity;
     *p_temperature = temperature;
-    
-    return rst; 
+
+    return SUCCESS;
 }

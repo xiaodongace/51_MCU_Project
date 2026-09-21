@@ -1,16 +1,13 @@
+#include "App_Menu.h"
 #include "Buzzer.h"
-#include "Key.h"
 #include "LED.h"
 #include "NIXIE.h"
 
 /* Buzzer任务函数
- * 1、扫描独立按键，根据按键1状态 播放 | 暂停 音符
- *     - 按键1松开时 通过 Buzzer_IsPlaying() 查询当前播放状态后取反
- * 2、根据按键2状态：三首音乐，按键2松开后切换下一首音乐
- * 3、根据按键3状态：按键3松开后音乐音量--，音量范围0-10
- * 4、根据按键4状态：按键4松开后音乐音量++，音量范围0-10
- * 5、播放时 LED 随机闪烁(2-6个),暂停时全灭
- * 6、走马灯数码管
+ * 1、按键由App_Menu_Task统一扫描和分发，本任务不再读取按键
+ * 2、只有current_page等于PAGE_BUZZER时才运行蜂鸣器功能
+ * 3、播放时LED随机闪烁，暂停或退出时全灭
+ * 4、保留原有走马灯数码管功能
 */
 
 
@@ -19,42 +16,33 @@ void App_Buzzer_Task() _task_ App_Buzzer_Task_Id {
 
     while (1)
     {
-        Nixie_Run();
-        Key_Scan();
-        if(Key_GetPressEvent(0) != 0) {
-            printf("111");
-            Buzzer_Play_Pause(!Buzzer_IsPlaying());
-        }
-        if(Key_GetPressEvent(1) != 0) {
-            printf("222: %d\n", (int)Song);
+        /* 只有菜单进入蜂鸣器功能后才执行原有逻辑 */
+        if (current_page == PAGE_BUZZER) {
+            /* 保留原有数码管走马灯功能 */
+            Nixie_Run();
 
-            Buzzer_NextSong();
-        }
-        if(Key_GetPressEvent(2) != 0) {
-            Volume--;
-            if(Volume < 0) Volume = 0;
-            Buzzer_Refresh();
-            printf("333: %d\n", (int)Volume);
-        }
-        if(Key_GetPressEvent(3) != 0) {
-            Volume++;
-            if(Volume > 10) Volume = 10;
-            Buzzer_Refresh();
-            printf("444: %d\n", (int)Volume);
-        }
+            /* 非阻塞推进音乐，只在拍子结束时切换音符 */
+            Buzzer_Tick();
 
-        Buzzer_Tick();                  // 非阻塞推进:拍子到才换音
+            /* 每15轮刷新一次LED效果 */
+            if (++led_tick >= 15) {
+                /* 清零LED刷新计数 */
+                led_tick = 0;
 
-        // 任务5:播放时 LED 随机闪烁,暂停/停止时全灭
-        if (++led_tick >= 15) {
+                /* 播放时随机点亮2至6个LED */
+                if (Buzzer_IsPlaying())
+                    LED_Random();
+                else
+                    /* 暂停或停止时关闭全部LED */
+                    LED_AllOff();
+            }
+        }
+        else {
+            /* 非蜂鸣器页面不累计LED刷新时间 */
             led_tick = 0;
-            if (Buzzer_IsPlaying())
-                LED_Random();           // 随机点亮 2-6 个
-            else
-                LED_AllOff();           // 全灭
         }
 
+        /* 使用固定节拍让出CPU，任务不会忙等待 */
         os_wait2(K_TMO, BUZZER_LOOP_TICKS);
     }
-    
 }

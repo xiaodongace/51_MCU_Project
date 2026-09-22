@@ -29,7 +29,6 @@
 /* 标定用：每 5 次调用（=5 秒）打印一次原始 ADC 与中间量。
  * 真机上"温度不对"时，靠这一行区分是"采样值不对"还是"换算不对"。
  * 标定完成、确认温度正确之后改成 0。 */
-#define NTC_DEBUG_RAW   1
 
 /* ==================== 电阻-温度对照表（逐字取自 v3.1） ==================== */
 u16 code temp_table[]= {
@@ -307,19 +306,6 @@ s16 NTC_GetTempX10(void)
     /* 3) 查表 -> 温度（整数摄氏度） */
     temp = (s16)search_temp(rX100) - (s16)TBL_BASE;
 
-#if NTC_DEBUG_RAW
-    {
-        static u8 s_dbg = 0;
-
-        if (++s_dbg >= 5)
-        {
-            s_dbg = 0;
-            printf("[NTC] adc=%u mv=%lu rX100=%u T=%d\r\n",
-                   (unsigned)adcValue, (unsigned long)mv,
-                   (unsigned)rX100, (int)temp);
-        }
-    }
-#endif
 
     /* 4) 滑动平均，抑制跳变（《04》F1：温度要有滤波，数据不跳）
      *    先顺序填满 4 格，之后按环形覆盖；平均值始终只用"已填充"的格数算，

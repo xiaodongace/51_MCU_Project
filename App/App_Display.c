@@ -14,19 +14,12 @@
 #include "App_Input.h"   /* Input_GetPotLevel：副屏显示实时旋钮档位 */
 #include "App_Alarm.h"
 #include "App_Sensor.h"
-#include "App_Game.h"
 #include "App_Font.h"
 #include "I2C_Lock.h"
 #include "LED.h"
-#include "NixieScan.h"
-#include "Servo.h"
-#include "App_Icons.h"   /* Icon_Get：任务清单的图标（64x48） */       /* Servo_GetAngle：云台页显示当前角度 */   /* Nixie_SetTime：数码管内容，读时钟后立刻同步 */
-
-/* 副屏驱动改用 demo30 的原生实现（Driver/I2C_OLED/I2C_OLED.c）。
- * demo30 的这套驱动是自包含的：自带 I2C_Start/Send_Byte/I2C_WaitAck，
- * 函数名本来就是 I2C_OLED_*，不需要任何别名包装。
- * 【方案 B】原样照抄，不再自己接线。 */
-#include "I2C_OLED.h"
+#include "NixieScan.h"   /* Nixie_SetTime：数码管内容，读时钟后立刻同步 */
+#include "Servo.h"       /* Servo_GetAngle：云台页显示当前角度 */
+#include "App_Icons.h"   /* Icon_Get：任务清单的图标（整屏 128x64，见 App_Icons.c）*/
 
 
 /*------------------------------------------------------------------------
@@ -49,11 +42,34 @@
 /*------------------------------------------------------------------------
  * 内部状态
  *------------------------------------------------------------------------*/
-static u8 s_fullRedraw = 1;
+/*========================================================================
+ *          刷新请求标志 —— 只有一个入口 + 一对标志（照 demo30 的模型）
+ *
+ * 【2026-09-22 整体重构 · 依据参考工程 demo30 的 App/App_OLED.c 第 52 行】
+ *
+ *   //在I2C屏幕内用来判断是否要刷新屏幕
+ *   static u8 global_is_clear_screen = 1;
+ *   //更新整个I2C_OLED屏幕内容需要传入参数1刷新，只更新屏幕内一部分内容传入参数0不刷新就行
+ *   void APP_I2C_OLED_Refresh(u8 clear_screen) {
+ *       if (clear_screen) { global_is_clear_screen = 1; }
+ *       os_send_signal(TASK_I2C_OLED);
+ *   }
+ *
+ * 收敛前本工程有 **5 个请求函数 / 5 个标志**，语义还重叠
+ * （RequestMain 和 RequestFull 都在重画主屏），调用方很容易用错。
+ * 现在按 demo30 收敛成：**一个入口、一个问题**——
+ *    "这次是换页(1)，还是只改了个值(0)？"
+ *
+ *   s_needRedraw = 有刷新请求待处理
+ *   s_needClear  = 这次要不要先清屏（**单向上闩**：只置位、从不降级）
+ *========================================================================*/
+static u8 s_needRedraw = 1;         /* 上电第一次一定画 */
+static u8 s_needClear  = 1;         /* 上电第一次一定清 */
 static UIPageId_t s_page = PAGE_HOME;
-/* 主屏（SPI）单独的整屏重画请求。与 s_fullRedraw 分开是因为：
- * 主屏重画不需要限流（软件 SPI 约 1ms），而 s_fullRedraw 要管着 I2C 的 800ms 限流。 */
-static u8 s_mainDirty = 0;
+/* 【2026-09-22】原来这里还有一条"主屏单独的重画请求标志"——
+ * 按 demo30 的模型收敛之后，主屏和副屏共用同一个刷新请求入口，
+ * 这条单独的路已经删掉。请见 Display_Refresh() 的说明。 */
+
 
 
 /* 用于判断"内容变了没有" */
@@ -72,26 +88,6 @@ static u8 s_mainOn = 1;
 
 static u32 s_lastFullExecMs = 0;   /* 上一次真正执行整屏重画的时刻（执行点限流） */
 
-static u16 s_dbgPoll = 0;
-static u16 s_dbgSub  = 0;
-static u16 s_dbgFull = 0;
-static u16 s_dbgHb   = 0;
-
-/*
- * 【2026-09-18 新增 · 诊断】TASK_RENDER 活性探针。
- *
- * 真机现象：副屏画面"被拉宽占据整屏"，重启后画面恢复正常但**再也不更新**，
- * 而此时矩阵键盘还能改时间（说明 TASK_LOGIC 与 I2C 总线都是活的）。
- * 那问题就只剩一个可能：TASK_RENDER 首次画完之后不再刷新。
- *
- * 所以这里统计三件事，每 5 秒打一行：
- *   poll    : Display_Poll 被调用的次数（TASK_RENDER 是否还在跑）
- *   sub     : 副屏真正被刷新的次数（走到写字那一步没有）
- *   full    : 整屏重画的次数
- * 判读：
- *   poll 不涨           -> TASK_RENDER 卡住了（或被 RTX 调度饿死）
- *   poll 涨、sub/full 不涨 -> 走到了 Display_Poll 但没走到刷新（判据/限流的问题）
- *   sub 涨但屏幕不动     -> 控制器寻址模式被改坏（需要控制器级恢复）
 
 /*========================================================================
  *                          主屏（SPI）
@@ -116,11 +112,113 @@ static void spi_draw_digit32(u8 x, u8 y, u8 idx)
 /* 大字时间：HH:MM。
  * 【真机修正】原来小时 < 10 时把首位留空（消隐前导零），显示成 " 0:01"，
  * 用户要求显示 "00:01"。现在两位数字全画。 */
+/*========================================================================
+ *     主屏（SPI）写一行的**统一入口** —— 每次都补满整行
+ *
+ * 【2026-09-21 修"第二级菜单第三行有时候出现乱码残影"】
+ *
+ * SPI_OLED_Display_GB2312_string() 是"写到哪算哪"，**不会清掉本行剩下的部分**。
+ * 而汉字 16px、ASCII 8px，不同字符串的像素宽度差很多：
+ *     "> 1 日期和时间" = 112px        "> 2 番茄钟" = 80px
+ * 先在第三行画了宽的、再换成窄的，右边那 32px 就留着**上一帧的笔画碎片**
+ * —— 用户看到的就是"第三行有时候出现 #d 这种字符"。
+ *
+ * 这一条在 I2C 副屏上早就修过（sub_draw_line 补到 16 个字符 = 128px），
+ * 但 SPI 这一侧一直只有 main_draw_env 做了补全，菜单行/设置行/日期行都没做。
+ *
+ * 现在收敛成一个函数：**任何要写一整行的 SPI 文字都走它**，
+ * 每次写入都正好覆盖 128px 整行，从根上消掉残影这一类问题。
+ *========================================================================*/
+/* 主屏"补满整行"的统一行缓冲。
+ * 【2026-09-21】放**文件级 static** 而不是函数内局部：
+ * 本函数有 10 个调用点，局部数组会被 C51 的覆盖分析按调用路径反复分配，
+ * 实测 xdata 从 2724 涨到 3830。放文件级只有这一份 48 字节。
+ * 安全性：全程在 TASK_RENDER 一个任务里跑，末尾只调一次 SPI 写屏、不会重入。 */
+static char s_spiLine[48];
+
+/* 日期与时间任务（SPI 版面）的临时串缓冲，同样放文件级 */
+static char s_dtLine[40];
+
+/* 测距仪版面的临时串缓冲（同样放文件级 static，理由同上） */
+static char s_rngLine[40];
+
+/*------------------------------------------------------------------------
+ *  ※【参数约定 · 必须记住】**y 是"页号"，不是"行号"**
+ *
+ *  SPI_OLED 的寻址单位是"页"（每页 8 行像素），而汉字字模是 **16x16**
+ *  -> 一个汉字占 **2 个页**（page y 和 page y+1）。
+ *
+ *  所以"一行文字"= 相邻的两个页。四行文字的页号必须是：
+ *      第 1 行 -> page 0      第 2 行 -> page 2
+ *      第 3 行 -> page 4      第 4 行 -> page 6
+ *  **奇数页只能作为某一行的下半部分，绝不能拿来当一行的起点。**
+ *
+ *  【真机踩过】本项目曾把"行号 0/1/2/3"当成 y 传进来，于是
+ *  "第 2 行"（page 1~2）的清空写把 page 1 覆盖掉 ——
+ *  而 page 1 正是"第 1 行"的下半部分 -> 屏幕上的字**只剩上半截**。
+ *  （对比：副屏的 sub_draw_line() 内部做了 line*2，所以没有这个问题。）
+ *------------------------------------------------------------------------*/
+static void main_draw_line_fit(u8 y, char *s)
+{
+    char *buf = s_spiLine;
+    u8   n  = 0;
+    u8   px = 0;
+
+    /* 逐字符搬内容，同时累计像素宽度：
+     * GB2312 首字节 >= 0x81 算汉字（16px），否则算 ASCII（8px）。 */
+    while (s[n] != '\0' && n < 40)
+    {
+        if ((u8)s[n] >= 0x81)
+        {
+            buf[n] = s[n];
+            n++;
+            if (s[n] == '\0')
+            {
+                break;                      /* 半个汉字，直接丢 */
+            }
+            buf[n] = s[n];
+            n++;
+            px = (u8)(px + 16);
+        }
+        else
+        {
+            buf[n] = s[n];
+            n++;
+            px = (u8)(px + 8);
+        }
+    }
+
+    /* 补空格（每个 8px）直到满 128px = 整屏宽 */
+    while (px < 128 && n < 46)
+    {
+        buf[n] = ' ';
+        n++;
+        px = (u8)(px + 8);
+    }
+
+    buf[n] = '\0';
+
+    SPI_OLED_Display_GB2312_string(0, y, (u8 *)buf);
+}
+
 /* 【第 7 点】设置页主屏版面的前置声明。
- * main_full_redraw() 里要用它，而它的定义在文件后面（显示层的安排是
+ * main_redraw() 里要用它，而它的定义在文件后面（显示层的安排是
  * "先主屏的大字时钟/菜单，再各任务页版面"），所以这里先声明一下。
  * C51 不允许调用后面才定义的函数。 */
 static void main_draw_settings(void);
+
+/* 【测距仪】同理：main_redraw() 在第 500 行左右就调用它，而它的定义在文件后面。
+ * **不加这行会报 C231 'redefinition'** ——
+ * 根因是 C89 的隐式声明：函数先被调用时，C51 按"未知参数、返回 int、extern"
+ * 临时声明一次；后面真正的定义是 `static void`，两者冲突 -> 报"重定义"。
+ * （main_draw_settings 一直没事，就是因为它有上面这行前置声明。） */
+static void main_draw_range(void);
+
+/* 【掌机模式】两个版面的前置声明（定义在文件后面）。
+ * 必须声明 —— C51 是先调用后定义会报 C231 "redefinition"
+ * （实际是隐式声明与 static 定义冲突），本项目已踩过。 */
+static void main_draw_game_list(void);
+static void sub_draw_game_page(void);
 
 static void main_draw_bigtime(void)
 {
@@ -143,22 +241,6 @@ static void main_draw_bigtime(void)
     x = (u8)(x + MAIN_BIG_STEP);
 
     spi_draw_digit32(x, MAIN_BIG_Y, (u8)(mm % 10));
-}
-
-/* 把 32 像素高的一行清掉（重画前先擦，避免旧数字残留） */
-static void main_clear_row(u8 x, u8 cols)
-{
-    u8 page;
-    u8 i;
-
-    for (page = 0; page < FONT_PAGES; page++)
-    {
-        SPI_OLED_address(x, (u8)(MAIN_BIG_Y + page));
-        for (i = 0; i < cols; i++)
-        {
-            SPI_OLED_WR_Byte(0x00, SPI_OLED_DATA);
-        }
-    }
 }
 
 /* 星期汉字。用 switch 返回字面量，不用"字符指针数组"——
@@ -188,7 +270,9 @@ static void main_draw_date(void)
             (int)g_clock.year, (int)g_clock.month, (int)g_clock.day,
             week_cn(g_clock.week));
 
-    SPI_OLED_Display_GB2312_string(0, MAIN_DATE_Y, (u8 *)buf);
+    /* 【2026-09-21】改走统一入口：日期行只占 112px，剩下的 16px 原来一直没被覆盖，
+     * 一旦别的内容（比如任务清单的第三行）用到这一页就互相留尾巴。 */
+    main_draw_line_fit(MAIN_DATE_Y, buf);
 }
 
 /* 温湿度行：T25.3C H60% ALT3 */
@@ -236,55 +320,17 @@ static void main_draw_env(void)
      * 末尾会被截掉。现在缩到 16 个字符正好占满。 */
     sprintf(buf + strlen(buf), " ALM%d", (int)cnt);
 
-    /* 【2026-09-19】补空格到满行 16 个字符（= 128 列）。
-     * 湿度从 1 位变 2 位（"H7%" -> "H57%"）会让整行变长、
-     * 反过去变短时行尾就会留下上一帧的尾巴。
-     * 补满之后每次写入都正好覆盖整行，不用先擦屏、也就不会闪。 */
-    {
-        u8 n = (u8)strlen(buf);
-
-        while (n < 16)
-        {
-            buf[n] = ' ';
-            n++;
-        }
-        buf[n] = '\0';
-    }
-
-    SPI_OLED_Display_GB2312_string(0, MAIN_ENV_Y, (u8 *)buf);
-}
-
-/* 把主屏某一行的 2 页（16 像素高）整行擦掉，避免上一帧更长的字符串留尾巴 */
-static void main_clear_line(u8 y)
-{
-    u8 page;
-    u8 i;
-
-    for (page = 0; page < 2; page++)
-    {
-        SPI_OLED_address(0, (u8)(y + page));
-        for (i = 0; i < 128; i++)
-        {
-            SPI_OLED_WR_Byte(0x00, SPI_OLED_DATA);
-        }
-    }
-}
-
-/* 掌机模式的占位页。
- * 用主屏的硬件字库画中文，证明"M2 的位置已经留好、页面框架已通"，
- * 也顺便验证了主屏的字库链路是好的。 */
-static void main_draw_placeholder(void)
-{
-    SPI_OLED_Display_GB2312_string(32, 2, (u8 *)"掌机模式");
-    SPI_OLED_Display_GB2312_string(36, 4, (u8 *)"M2 开发中");
-    SPI_OLED_Display_GB2312_string(16, 6, (u8 *)"按KEY2返回主界面");
+    /* 【2026-09-19】原来在这里手工补到 16 个字符（= 128 列）来消残影。
+     * 【2026-09-21】这段逻辑已经收进 main_draw_line_fit()，改走统一入口，
+     * 免得"哪个函数补了、哪个没补"再次出现不一致。 */
+    main_draw_line_fit(MAIN_ENV_Y, buf);
 }
 
 /*========================================================================
  *              主屏（SPI）：任务切换界面   【2026-09-19 UI 改造 S2】
  *
  * 主屏分两级（用户定的模型）：
- *   第 0 级 = 大字时钟（最初始一级）—— 在 main_full_redraw() 里直接画
+ *   第 0 级 = 大字时钟（最初始一级）—— 在 main_redraw() 里直接画
  *   第 1 级 = 任务清单（本函数）
  * 进了某个任务之后（第 2 级），主屏**仍然画任务清单**，
  * 光标停在那个任务所在的行上 —— 这就是"主屏 = 切换任务"的直接体现。
@@ -334,28 +380,68 @@ static void main_draw_menu(void)
             k = (u8)(k - MENU_TASK_COUNT);      /* 回绕；7 项、4 行窗口，最多减一次 */
         }
 
-        /* 格式照 demo30 的菜单行：光标 + 序号 + 名称 */
-        sprintf(buf, "%c %d %s", (row == 0) ? '>' : ' ', (int)k, Menu_TaskName(k));
+        /* 格式照 demo30 的菜单行：光标 + 序号 + 名称。
+         * 【2026-09-21 用户要求】**序号从 1 开始**（原来从 0 开始）——
+         * 只是显示上 +1，内部下标 k 不变，导航逻辑不受影响。 */
+        sprintf(buf, "%c %d %s", (row == 0) ? '>' : ' ', (int)(k + 1), Menu_TaskName(k));
 
-        SPI_OLED_Display_GB2312_string(0, (u8)(row * 2), (u8 *)buf);
+        /* 走统一入口，补满 128px —— 这行原来是"第三行出现残影"的主要来源 */
+        main_draw_line_fit((u8)(row * 2), buf);
     }
 }
 
-static void main_full_redraw(void)
+static void main_redraw(u8 doClear)
 {
-    SPI_OLED_Clear();
+    /* 【2026-09-21】拆出 doClear：切页面必须清屏（擦掉上一页残留），
+     * 页内移动一定不能清屏（一清就闪）。见 Display_Refresh 的说明。 */
+    if (doClear)
+    {
+        SPI_OLED_Clear();
+    }
 
-    /* 【第 3 点】「日期和时间」任务：SPI 只显示当前选项（其他选项全部消失）*/
+    /* 【2026-09-21 用户要求】「日期和时间」任务：SPI 把两个选项都显示出来，
+     * 当前项前面加 '>'（和别的菜单同款"以大于号对齐"）。
+     *
+     * 【2026-09-22 修"字只显示上半部分"】
+     * 这里的参数是**页号**（见 main_draw_line_fit 的约定），不是行号。
+     * 我上一版传了 0/1/2/3，于是 page 1 被"第 2 行"的清空写覆盖，
+     * 而 page 1 正是第 1 行的下半部分 -> 字只剩上半截。
+     * 现在改成 **0 / 2 / 4 / 6**（四行各占两个页，正好铺满 8 页）。 */
     if (Menu_DateIsActive())
     {
         if (Menu_DateState() == 0)
         {
-            SPI_OLED_Display_GB2312_string(0, 0, (u8 *)(Menu_DateChoice() ? "改时分" : "改年月日"));
+            /* 选项态：两个选项分别放在第 1、3 行，中间留一行便于分辨 */
+            sprintf(s_dtLine, "%c修改年月日", (Menu_DateChoice() == 0) ? '>' : ' ');
+            main_draw_line_fit(0, s_dtLine);        /* 第 1 行 -> page 0~1 */
+
+            main_draw_line_fit(2, (char *)"");      /* 第 2 行 -> page 2~3（空行也要写）*/
+
+            sprintf(s_dtLine, "%c修改时分", (Menu_DateChoice() == 1) ? '>' : ' ');
+            main_draw_line_fit(4, s_dtLine);        /* 第 3 行 -> page 4~5 */
+
+            main_draw_line_fit(6, (char *)"");      /* 第 4 行 -> page 6~7 */
         }
         else
         {
-            SPI_OLED_Display_GB2312_string(0, 0, (u8 *)(Menu_DateChoice() ? "输入时分" : "输入年月日"));
+            /* 输入态：显示在输哪一项 + 已输位数 */
+            sprintf(s_dtLine, "输入%s %d/%d",
+                    (Menu_DateChoice() == 0) ? "年月日" : "时分",
+                    (int)Menu_DateCnt(),
+                    (int)((Menu_DateChoice() == 0) ? 8 : 4));
+            main_draw_line_fit(0, s_dtLine);        /* page 0~1 */
+            main_draw_line_fit(2, (char *)"");      /* page 2~3 */
+
+            main_draw_line_fit(4, (char *)"K4 删除最后一位");   /* page 4~5 */
+            main_draw_line_fit(6, (char *)"");      /* page 6~7 */
         }
+        return;
+    }
+
+    /* 【测距仪】主屏显示大字距离（它自带版面，4 行全写满） */
+    if (s_page == PAGE_RANGE)
+    {
+        main_draw_range();
         return;
     }
 
@@ -363,6 +449,21 @@ static void main_full_redraw(void)
     if (s_page == PAGE_SETTINGS)
     {
         main_draw_settings();
+        return;
+    }
+    /* 【掌机模式】"7 游戏"
+     *   游玩/结算态：**直接 return，一个字都不画** ——
+     *     游戏画面由游戏自己的 Draw() 负责（它内部会 GClear + Refresh）。
+     *     显示层一旦插手，游戏就会被擦成菜单。
+     *   列表态：画 3 个游戏名。
+     */
+    if (s_page == PAGE_GAME_HALL)
+    {
+        if (Menu_GameIsPlaying())
+        {
+            return;
+        }
+        main_draw_game_list();
         return;
     }
 
@@ -389,33 +490,22 @@ static void main_full_redraw(void)
  *                          副屏（I2C，只能 ASCII）
  *========================================================================*/
 
-/*
- * 安全的控制器恢复序列 —— 【2026-09-18 新增 · 针对"黑屏后连重启都救不回来"】
+/*------------------------------------------------------------------------
+ *  画副屏一行 16 像素高的 ASCII。line 取 0..3，对应页 0/2/4/6。
  *
- * 真机现象：按键/电位器操作多了之后副屏全黑，而且**按重启按钮也亮不起来**，
- * 只有拔插 USB（给 OLED 断电）才能恢复 ——
- * 说明坏的不是 MCU 里的状态，而是 **OLED 控制器自己的寄存器**（MCU 重启时它一直供电）。
+ *  【为什么必须固定宽度】
+ *    本函数的刷新粒度是"只重画变化的那一行"，一次只写这一行、不做整行清屏。
+ *    如果新字符串比上一帧短，旧内容的尾巴会留在屏幕上：
+ *      真机现象 VOL 从 "VOL 10/10 SONG 1"(15字) 降到 "VOL 0/10 SONG 1"(14字)，
+ *      显示成 "VOL 0/10 SONG 11" —— 多出来那个 1 就是上一帧的残留。
+ *    所以统一补到 16 个字符 = 128 列满宽，超长则截断；
+ *    每行写入都正好覆盖整行，不会留尾巴。
  *
- * 关键补充：只发 0xAF 是救不回来的。因为最可能被写坏的是**电荷泵使能**：
- *     OLED_Init() 里 0xAE 之后紧跟着 0x8D 0x14（开电荷泵）；
- *     一旦序列被打断、停在 0x8D 0x10（关电荷泵）附近，屏幕就是全黑，
- *     此后只发 0xAF 毫无作用 —— 必须重发 0x8D 0x14 才能点亮面板。
- *
- * 所以这里把控制器的**全部关键配置**重发一遍，唯独：
- *   不发 0xAE（关显示）   -> 任何时刻被打断都不会留下黑屏
- *   不清显存              -> 已有画面不会丢
- * 代价只有 16 次字节事务（约 2ms），所以放在每次整屏重画之前，
- * 相当于"每次重画前先把控制器修好再写"。/* 画一行 16 像素高的 ASCII。line 取 0..3，对应页 0/2/4/6。
- *
- * 【2026-09-18 回退说明】
- * 上一版我把这里改成"整页一次事务批量写"（自己拼 256 字节缓冲 + I2C_WriteNbyte(..,128)），
- * 目的是把每行 258 次 I2C 事务降到 4 次、根治"整屏垂直滚动"。
- * 实机结果是副屏整屏乱码、按键对副屏完全无反应 —— 说明批量写这条路径没走通，
- * 而且很可能卡在里面（TASK_RENDER 出不来），连带主屏环境行也不再刷新。
- *
- * 所以回退到驱动自带的 OLED_ShowString（逐字节、已验证能正确显示），
- * 只用总线锁保证不与读时钟交叉。垂直滚动的隐患改用"周期性整屏重画"兜底：
- * 即使某一次被冲乱，最多 3 秒后自动恢复正确画面。 */
+ *  【为什么是逐字节写、不是批量写】
+ *    2026-09-18 试过"整页一次事务批量写"，实机副屏整屏乱码、按键无响应，已回退。
+ *    现在的批量写只用在两处**已验证**的地方：sub_blit()（图标）和 gauge_flush()（仪表盘），
+ *    它们都是"整页全量覆盖"；文字行长度可变，走逐字节这条稳的路。
+ *------------------------------------------------------------------------*/
 static void sub_draw_line(u8 line, const char *s)
 {
     /* 【2026-09-19 修正 · 必须固定宽度】
@@ -465,36 +555,17 @@ static const char *page_name(UIPageId_t p)
     case PAGE_RINGING:     return "*** RING ***";
     case PAGE_RANGE:       return "RANGE";
     case PAGE_SERVO:       return "GIMBAL";
-    case PAGE_GAME_HALL:   return "GAME HALL";
-    case PAGE_GAME_SNAKE:  return "SNAKE";
-    case PAGE_GAME_BRICK:  return "BRICK";
-    case PAGE_GAME_PLANE:  return "PLANE";
-    case PAGE_GAME_DAILY:  return "DAILY";
-    case PAGE_GAME_OVER:   return "GAME OVER";
+    case PAGE_GAME_HALL:   return "GAME";
+    /* 【2026-09-22 清理】原来还有 5 个游戏子页 ID
+     * （PAGE_GAME_SNAKE / BRICK / PLANE / DAILY / OVER）。
+     * 掌机模式改成"「7 游戏」页内两状态"之后（见 App_Menu.c 的 Game_Poll），
+     * 这 5 个页面 ID 全工程再无引用 —— 游戏画什么由游戏自己的 Draw() 决定，
+     * 不再需要按页面 ID 分派。所以连枚举带这里的 case 一起删了。 */
     default:               return "?";
     }
 }
 
-/* 星期缩写（副屏只有 ASCII，不能显示汉字） */
-static char *week_abbr(u8 w)
-{
-    switch (w)
-    {
-    case 0: return "SUN";
-    case 1: return "MON";
-    case 2: return "TUE";
-    case 3: return "WED";
-    case 4: return "THU";
-    case 5: return "FRI";
-    case 6: return "SAT";
-    default: return "---";
-    }
-}
-
-/*
- * 副屏每秒只需要刷"时间那行"。整屏 4 行刷一遍要走 4 x 256 字节 I2C，
- * 约 80~90ms，期间总线锁一直被占着，会把 TASK_LOGIC 读时间卡住。
- * 只刷一行约 20ms，占用降到一个可以接受的水平。/*========================================================================
+/*========================================================================
  *      副屏批量写：一页一次 I2C 事务   —— 任务清单第 2b 点
  *
  * 【为什么值得做】
@@ -505,7 +576,7 @@ static char *week_abbr(u8 w)
  *   而厂家库的 I2C_WriteNbyte() 本身就是"一次事务连发 number 个字节"
  *   （Lib/I2C.c 里是 do{ SendData(*p++); RecvACK(); } while(--number);），
  *   参数 number 是 u8，最大 255 —— 一页 128 字节正好。
- *   ⇒ 整屏只要 **8 次数据事务 + 8 次定位命令 = 16 次 ≈ 5ms，快约 70 倍。**
+ *   -> 整屏只要 **8 次数据事务 + 8 次定位命令 = 16 次 ≈ 5ms，快约 70 倍。**
  *
  * 【为什么以前失败过、这次敢重试】
  *   09-18 第 6 轮试过一次"整页一次事务批量写"，结果副屏全乱码、按键无反应，回退了。
@@ -540,7 +611,7 @@ static void sub_blit(u8 x, u8 page, u8 w, u8 *buf)
  *   关于云台方面，每次改变 10 角度就很好。」
  *
  * 版面（I2C 128x64）：
- *     page 0~1   GIMBAL              任务名（由 sub_full_redraw 画）
+ *     page 0~1   GIMBAL              任务名（由 sub_redraw 统一画）
  *     page 2~5   半圆轮廓 + 粗针        32 行高（本模块负责）
  *     page 6~7   Angle  90 DEG        角度行（本模块负责）
  *
@@ -568,7 +639,7 @@ static void sub_blit(u8 x, u8 page, u8 w, u8 *buf)
 #define GAUGE_H       (GAUGE_PAGES * 8)
 
 #define GAUGE_CX      64    /* 圆心 x（画布正中）*/
-#define GAUGE_CY      46    /* 圆心 y（区域局部坐标）：46-46=0 ⇒ 弧顶正好落在第 0 行 */
+#define GAUGE_CY      46    /* 圆心 y（区域局部坐标）：46-46=0 -> 弧顶正好落在第 0 行 */
 #define GAUGE_R       46    /* 半圆半径：左右到 x=18 / x=110 */
 #define GAUGE_NEEDLE  38    /* 指针长度 */
 #define GAUGE_NEEDLE_W 4    /* 指针粗细（像素）—— 用户要求"粗针" */
@@ -590,7 +661,7 @@ static u8 code s_cos255[91] =
 static u8 xdata s_gauge[GAUGE_W * GAUGE_PAGES];
 
 /* 单独重画仪表盘的请求标志（由 TASK_LOGIC 置，实际绘制由 TASK_RENDER 做）*/
-static u8 s_gaugeDirty = 0;
+
 
 /* 在区域内点一个像素（越界自动丢弃，调用方不用做边界检查）*/
 static void gauge_pixel(u8 x, u8 y)
@@ -770,7 +841,7 @@ static void sub_draw_gauge(void)
 #define ICON_PAGES  8       /* 8 页 = 64 行，整屏 */
 
 /* 只重画图标块的请求标志 */
-static u8 s_iconDirty = 0;
+
 
 static void sub_draw_icon(void)
 {
@@ -807,7 +878,7 @@ static void sub_draw_icon(void)
  * 用户规格：「I2C 第一行只显示 Alarm Edit，下面显示为三个闹钟，
  *   而且全部字体靠右显示，只有第一个闹钟字体靠左显示，
  *   靠左显示代表我当前可以设置这个闹钟。」
- * ⇒ **靠左 = 当前选中项**；编辑态的字段用同一套规则。
+ * -> **靠左 = 当前选中项**；编辑态的字段用同一套规则。
  *
  * 列表态                          编辑态
  *   Alarm Edit                      Edit 3/8
@@ -838,6 +909,16 @@ static char *alarm_days_str(u8 days)
 }
 
 /* 一行文字：靠左或靠右，并**补齐到满行 16 字符**（短串不补会在行尾留残影） */
+/* 把一行写成**全空格**（16 个字符 = 128px）。
+ * 【2026-09-21 为什么需要它】副屏现在有"不清屏只重画行"的路径，
+ * 于是**每一页都必须把 4 行全写满**，否则没被写到的那些行会留着上一屏的内容
+ * —— 用户报的"进入番茄钟修改时间，下半屏还显示上一界面的内容"就是这个。
+ * 用这个函数把空行也显式写掉，就保证了"4 行全自覆盖"。 */
+static void sub_blank_line(u8 line)
+{
+    sub_draw_line(line, "                ");     /* 16 个空格 */
+}
+
 static void sub_draw_row(u8 line, char *s, u8 alignLeft)
 {
     char buf[18];
@@ -857,6 +938,37 @@ static void sub_draw_row(u8 line, char *s, u8 alignLeft)
     {
         for (i = 0; i < n; i++) { buf[16 - n + i] = s[i]; }
     }
+
+    sub_draw_line(line, buf);
+}
+
+/*------------------------------------------------------------------------
+ * 副屏写一行"**带选中标记**"的列表项  —— 2026-09-21 用户要求
+ *
+ * 用户原话：「在第三级菜单中，在 I2C 屏幕中，选择当前内容时，和 SPI 屏幕一样
+ *   加一个大于号 '>'，不要全部对齐在右边了，**全部以大于号对齐**」
+ *
+ * 所以副屏的列表不再用"靠左 = 选中"那套（点 4 的老设计），
+ * 改成和 SPI 完全一致：**全部左对齐，选中行第 0 列画 '>'，其余行第 0 列留空格**。
+ * 不管选没选中，正文都从第 1 列开始 -> "全部以大于号对齐"。
+ *
+ * 同时保持 sub_draw_line 的"补满 16 字符"（= 128px）特性：
+ * 短串不补会在行尾留下上一帧的尾巴。
+ *------------------------------------------------------------------------*/
+static void sub_draw_row_sel(u8 line, const char *s, u8 selected)
+{
+    char buf[18];
+    u8   n = (u8)strlen(s);
+    u8   i;
+
+    if (n > 15) { n = 15; }             /* 留出第 0 列给标记 */
+
+    for (i = 0; i < 16; i++) { buf[i] = ' '; }
+    buf[16] = '\0';
+
+    buf[0] = selected ? '>' : ' ';
+
+    for (i = 0; i < n; i++) { buf[1 + i] = s[i]; }
 
     sub_draw_line(line, buf);
 }
@@ -903,9 +1015,10 @@ static void sub_draw_alarm_page(void)
             sprintf(buf, "%02d:%02d %s%s",
                     (int)g_alarms[k].hour, (int)g_alarms[k].minute,
                     alarm_days_str(g_alarms[k].days),
-                    g_alarms[k].enable ? "" : " off");
+                    /* 【2026-09-21 用户要求】开启也显示出来，和关闭的 off 一样 */
+                    g_alarms[k].enable ? " on" : " off");
 
-            sub_draw_row((u8)(i + 1), buf, (u8)(k == Menu_AlarmSel()));
+            sub_draw_row_sel((u8)(i + 1), buf, (u8)(k == Menu_AlarmSel()));
         }
         return;
     }
@@ -937,7 +1050,7 @@ static void sub_draw_alarm_page(void)
         }
 
         sprintf(buf, "%s %s", alarm_field_name(k), val);
-        sub_draw_row((u8)(i + 1), buf, (u8)(k == Menu_AlarmEditField()));
+        sub_draw_row_sel((u8)(i + 1), buf, (u8)(k == Menu_AlarmEditField()));
     }
 }
 
@@ -988,12 +1101,19 @@ static void sub_draw_pomo_page(void)
         default: sprintf(nam, "RUN");  break;
         }
         sprintf(buf, "Edit %s", nam);
-        sub_draw_row(0, buf, 1);
+        sub_draw_row(0, buf, 1);            /* 标题行：不带标记 */
 
         if (sel == 0)      { sprintf(buf, "%d min", (int)g_settings.pomodoro_work); }
         else if (sel == 1) { sprintf(buf, "%d min", (int)g_settings.pomodoro_rest); }
         else               { sprintf(buf, "%s", s_pomoRunStateStr()); }
-        sub_draw_row(1, buf, 1);
+        sub_draw_row_sel(1, buf, 1);        /* 值行：带 > 标记（和别的三级菜单一致）*/
+
+        /* 【2026-09-21 修用户报的"进去修改时间，下半屏还显示上一界面的内容"】
+         * 编辑态原来只写第 0、1 行，下面两行没被覆盖 —— 而页内切换走的是
+         * "不清屏只重画行"的路径，于是下半屏留着列表态的内容。
+         * 现在把 4 行全写满。 */
+        sub_blank_line(2);
+        sub_blank_line(3);
         return;
     }
 
@@ -1011,7 +1131,7 @@ static void sub_draw_pomo_page(void)
             sprintf(buf, "%s", s_pomoRunStateStr());
             break;
         }
-        sub_draw_row((u8)(i + 1), buf, (u8)(i == sel));
+        sub_draw_row_sel((u8)(i + 1), buf, (u8)(i == sel));
     }
 }
 
@@ -1025,36 +1145,55 @@ static void sub_draw_pomo_page(void)
 static void sub_draw_date_entry(void)
 {
     char buf[24];
+    u8   cur;
+    u8   maxCnt;
 
+    /* 【2026-09-21】加 '>' 标记 + 全部左对齐（用户要求与 SPI 一致）。
+     * 正在输的那一项前面画 '>'：前 4 位（时/分前 2 位）是第 0 行，
+     * 之后轮到第 1 行。 */
     if (Menu_DateChoice() == 0)
     {
+        cur    = (u8)((Menu_DateCnt() < 4) ? 0 : 1);
+        maxCnt = 8;
+
         sprintf(buf, "YEAR %04u", (unsigned)Menu_DateY());
-        sub_draw_row(0, buf, 1);
+        sub_draw_row_sel(0, buf, (u8)(cur == 0));
 
         sprintf(buf, "DATE %04u", (unsigned)Menu_DateMD());
-        sub_draw_row(1, buf, 1);
+        sub_draw_row_sel(1, buf, (u8)(cur == 1));
 
         sprintf(buf, "NOW  %04d-%02d-%02d",
                 (int)g_clock.year, (int)g_clock.month, (int)g_clock.day);
-        sub_draw_row(2, buf, 1);
-
-        sprintf(buf, "K4 DEL   %d/8", (int)Menu_DateCnt());
-        sub_draw_row(3, buf, 1);
+        sub_draw_row_sel(2, buf, 0);
     }
     else
     {
+        cur    = (u8)((Menu_DateCnt() < 2) ? 0 : 1);
+        maxCnt = 4;
+
         sprintf(buf, "HOUR %02u", (unsigned)Menu_DateH());
-        sub_draw_row(0, buf, 1);
+        sub_draw_row_sel(0, buf, (u8)(cur == 0));
 
         sprintf(buf, "MIN  %02u", (unsigned)Menu_DateM());
-        sub_draw_row(1, buf, 1);
+        sub_draw_row_sel(1, buf, (u8)(cur == 1));
 
         sprintf(buf, "NOW  %02d:%02d:%02d",
                 (int)g_clock.hour, (int)g_clock.minute, (int)g_clock.second);
-        sub_draw_row(2, buf, 1);
+        sub_draw_row_sel(2, buf, 0);
+    }
 
-        sprintf(buf, "K4 DEL   %d/4", (int)Menu_DateCnt());
-        sub_draw_row(3, buf, 1);
+    /* 第 4 行：进度 / 非法提示。
+     * 【2026-09-21 用户报】"输入错误的时间这个数字就能一直输入，DATE 的值也不断增加，
+     * 最下面一行已经显示 30/8" —— 位数溢出。App_Menu 那边已经加了满位拒绝，
+     * 这里同时把"校验没过"这个事实显示出来，用户知道要先按 K4 删。 */
+    if (Menu_DateErr())
+    {
+        sub_draw_row_sel(3, "INVALID K4 DEL", 0);
+    }
+    else
+    {
+        sprintf(buf, "K4 DEL  %d/%d", (int)Menu_DateCnt(), (int)maxCnt);
+        sub_draw_row_sel(3, buf, 0);
     }
 }
 
@@ -1108,7 +1247,8 @@ static void settings_value_str(u8 i, char *s)
     {
     case 0:  sprintf(s, "%d%%", (int)g_settings.volume);   break;
     case 1:  sprintf(s, "%d",   (int)g_settings.song + 1); break;
-    case 2:  sprintf(s, "%s",   g_settings.alert_mode == ALERT_RING ? "RING" : "VIBR"); break;
+    /* 【2026-09-21 用户要求】放曲子叫 Buzzer，震动叫 Motor */
+    case 2:  sprintf(s, "%s",   g_settings.alert_mode == ALERT_RING ? "Buzzer" : "Motor"); break;
     case 3:  sprintf(s, "%s",   g_settings.screen_on ? "ON" : "OFF");  break;
     case 4:  sprintf(s, "%s",   g_settings.sunrise_en ? "ON" : "OFF"); break;
     case 5:  sprintf(s, "%dmin", (int)g_settings.snooze_min); break;
@@ -1128,7 +1268,7 @@ static void main_draw_settings(void)
     /* 【和任务清单同款】光标恒在第一行、后续项依次排并到末尾回绕。
      * 这样两个列表的观感一致（用户对一致性很敏感），
      * 也避免"窗口跟着光标滚"和"光标固定"两套逻辑并存。
-     * 7 项、4 行窗口 ⇒ 回绕最多减两次。 */
+     * 7 项、4 行窗口 -> 回绕最多减两次。 */
     for (row = 0; row < 4; row++)
     {
         k = (u8)(sel + row);
@@ -1138,14 +1278,173 @@ static void main_draw_settings(void)
         }
 
         settings_value_str(k, val);
-        sprintf(buf, "%c %d %s %s", (row == 0) ? '>' : ' ', (int)k,
+        /* 【2026-09-21】序号从 1 开始（用户要求所有菜单都以 1 开头） */
+        sprintf(buf, "%c %d %s %s", (row == 0) ? '>' : ' ', (int)(k + 1),
                 settings_item_cn(k), val);
 
-        SPI_OLED_Display_GB2312_string(0, (u8)(row * 2), (u8 *)buf);
+        main_draw_line_fit((u8)(row * 2), buf);
     }
 }
 
 /* 副屏：只显示"当前这一项"的功能内容 */
+/*========================================================================
+ *                  测距仪版面（任务「4 测距仪」）
+ *
+ *  主屏（SPI，4 行，页号 0/2/4/6）：        副屏（I2C，4 行）：
+ *      测距仪                                   RANGE
+ *      (空行)                                   123 cm
+ *      距离 123 cm                              [####......]
+ *      范围 2-400cm                             2-400cm
+ *
+ *  两屏都写满 4 行 —— 这是"不清屏只重画行"的前提
+ *  （测距值每 150ms 变一次，走的就是那种刷新路径）。
+ *========================================================================*/
+
+/* 主屏：4 行全写满 */
+static void main_draw_range(void)
+{
+    /* 【2026-09-22】第 1 行带上量程，把第 4 行让给**原始 tick 数**。
+     * 为什么要显示 RAW：用户报"能测但不太准"，而"不准"的根因
+     * 只能靠一次**实测标定**解决 —— 量一个已知距离、读出 RAW、
+     * 新系数 = RAW ÷ 实际厘米。见 HC_SR04.h 的标定说明。
+     * 用 RAW 而不是"显示值"来算，是因为显示值已经过了一次整数除法，
+     * 拿未截断的 RAW 算可以一步到位、无二次误差。 */
+    main_draw_line_fit(0, (char *)"测距仪 2-400cm");
+    main_draw_line_fit(2, (char *)"");
+
+    if (Menu_RangeCm() == 0)
+    {
+        main_draw_line_fit(4, (char *)"距离 ---");
+    }
+    else
+    {
+        sprintf(s_rngLine, "距离 %u cm", (unsigned)Menu_RangeCm());
+        main_draw_line_fit(4, s_rngLine);
+    }
+
+    sprintf(s_rngLine, "RAW %u", (unsigned)Menu_RangeRaw());
+    main_draw_line_fit(6, s_rngLine);
+}
+
+/* 副屏：数值 + 一条 10 格的进度条 */
+static void sub_draw_range_page(void)
+{
+    char buf[24];
+    char bars[12];
+    u16  cm = Menu_RangeCm();
+    u8   n;
+    u8   i;
+
+    sub_draw_row_sel(0, "RANGE 2-400", 0);
+
+    if (cm == 0)
+    {
+        sub_draw_row_sel(1, "--- cm", 0);
+    }
+    else
+    {
+        sprintf(buf, "%u cm", (unsigned)cm);
+        sub_draw_row_sel(1, buf, 0);
+    }
+
+    /* 进度条：把 2~400cm 映射到 10 格。
+     * 用整数算，避免浮点（本工程硬约束：浮点库 = 0）。 */
+    if (cm <= 2)
+    {
+        n = 0;
+    }
+    else if (cm >= 400)
+    {
+        n = 10;
+    }
+    else
+    {
+        n = (u8)(((u16)(cm - 2U) * 10U) / 398U);
+    }
+
+    for (i = 0; i < 10; i++)
+    {
+        bars[i] = (u8)((i < n) ? '#' : '.');
+    }
+    bars[10] = '\0';
+
+    sprintf(buf, "[%s]", bars);
+    sub_draw_row_sel(2, buf, 0);
+
+    /* 【2026-09-22】第 4 行由"量程"改成**原始 tick 数**：量程已经挪到标题行，
+     * 这一行让给标定（新系数 = RAW ÷ 实际厘米）。 */
+    sprintf(buf, "RAW %u", (unsigned)Menu_RangeRaw());
+    sub_draw_row_sel(3, buf, 0);
+}
+
+/*========================================================================
+ *          掌机模式（"7 游戏"）的两个版面
+ *
+ *  列表态（选游戏）                      I2C 副屏
+ *      SPI 主屏                            GAME  PICK ONE
+ *      > 1 贪吃蛇                          > SNAKE
+ *        2 打砖块                            BRICK
+ *        3 飞机大战                          PLANE
+ *      K2 开始  K4 返回
+ *
+ *  游玩态：
+ *    · SPI 主屏**完全由游戏自己画**（游戏的 Draw() 里调
+ *      SPI_OLED_GClear + DrawPoint + Refresh）——
+ *      main_redraw() 必须直接 return，一旦插手就把游戏画面擦成菜单。
+ *    · I2C 副屏**关掉**：sub_redraw() 的 hasContent 里刻意不含
+ *      "游戏 + 游玩态"，于是走"无内容"分支发 DisplayOff（0xAE）。
+ *      这就是用户要的"游玩时 I2C 屏幕直接关闭"。
+ *========================================================================*/
+
+static char *game_name_cn(u8 i)
+{
+    switch (i)
+    {
+    case 0:  return "贪吃蛇";
+    case 1:  return "打砖块";
+    default: return "飞机大战";
+    }
+}
+
+static char *game_name_en(u8 i)
+{
+    switch (i)
+    {
+    case 0:  return "SNAKE";
+    case 1:  return "BRICK";
+    default: return "PLANE";
+    }
+}
+
+/* 主屏：列出 3 个游戏（光标行带大于号），第 4 行给按键提示。
+ * 每行都走 main_draw_line_fit()（补满 128px），所以页内移动不清屏也不留残影。 */
+static void main_draw_game_list(void)
+{
+    char buf[24];
+    u8   i;
+
+    for (i = 0; i < (u8)GAME_COUNT; i++)
+    {
+        sprintf(buf, "%c %d %s", (i == Menu_GameSel()) ? '>' : ' ',
+                (int)(i + 1), game_name_cn(i));
+        main_draw_line_fit((u8)(i * 2), buf);
+    }
+
+    main_draw_line_fit(6, (char *)"K2 开始  K4 返回");
+}
+
+/* 副屏：游戏名列表。只在"选游戏"这一屏显示 —— 进游戏后副屏被关掉。 */
+static void sub_draw_game_page(void)
+{
+    u8 i;
+
+    sub_draw_row_sel(0, "GAME  PICK ONE", 0);
+
+    for (i = 0; i < (u8)GAME_COUNT; i++)
+    {
+        sub_draw_row_sel((u8)(i + 1U), game_name_en(i), (u8)(i == Menu_GameSel()));
+    }
+}
 static void sub_draw_settings_page(void)
 {
     char buf[24];
@@ -1157,108 +1456,150 @@ static void sub_draw_settings_page(void)
     settings_value_str(sel, buf);
     sub_draw_row(1, buf, 1);
 
-    /* 操作提示按"当前项"和"状态"分别显示。
-     * 音量和震动强度这两项**旋钮直接能调**（列表态、编辑态都行），
-     * 所以提示里把旋钮写在最前面；其余项只能用 KEY1/KEY3 调。 */
+    /* 操作提示。
+     * 【2026-09-21 用户要求】"所有菜单去掉最后一行 'K2 OK'" ——
+     * 原来这里第 3 行写的是 "K2 OK  K4 SAVE"，现在整行不再写（留空），
+     * 同时 App_Menu 里那个"按 KEY2 确认 + 100ms 反馈"的功能也一并删掉了。
+     * 音量和震动强度这两项**旋钮直接能调**，提示里把旋钮写在最前面。 */
     if (sel == 0 || sel == 6)
     {
-        sub_draw_row(2, Menu_SetIsEditing() ? "KNOB / K1- K3+" : "TURN THE KNOB", 1);
+        sub_draw_row_sel(2, Menu_SetIsEditing() ? "KNOB K1- K3+" : "K2 EDIT", 0);
     }
     else
     {
-        sub_draw_row(2, Menu_SetIsEditing() ? "K1-  K3+" : "K2 EDIT", 1);
+        sub_draw_row_sel(2, Menu_SetIsEditing() ? "K1-  K3+" : "K2 EDIT", 0);
     }
 
-    sub_draw_row(3, Menu_SetIsEditing() ? "K2 OK  K4 SAVE" : "K4 SAVE+EXIT", 1);
+    /* 【2026-09-21】第 4 行不再写"K2 OK"，但**必须显式写空**
+     * —— 否则页内移动（不清屏路径）会让这一行留着上一屏的内容。 */
+    sub_blank_line(3);
 }
 
-static void sub_full_redraw(void)
-{
-    /* 【2026-09-19 用户要求】I2C 副屏不再显示"时间 / 日期 / VOL / SONG"那一套了。
-     * 现在的规则是按层级决定，**没内容就全黑**：
-     *     第 1 级 任务清单   → 当前光标所指任务的图标（版面 A，整屏一张 64x48 图）
-     *     云台任务页         → 半圆仪表盘 + 角度行
-     *     其余（第 0 级大字时钟、还没做的任务页）→ 整屏全黑，什么都不显示
-     * 用户原话："主菜单 I2C 屏幕什么都不显示，包括返回到主菜单时，I2C 屏幕也是都不显示。"
-     *
-     * Clear 每次都做：从"有内容"的页面退回来时必须把上一屏擦干净（副屏不会自己清）。 */
-    I2C_Lock();
-    I2C_OLED_Clear();
-    I2C_Unlock();
+/* 副屏面板当前是否点亮 —— 用来避免每次重画都发一遍 0xAF/0xAE */
+static u8 s_subOn = 0;
 
-    /* 「日期和时间」任务（第 3 点）：
-     * 选项选择态 I2C 仍显示图标；进入输入态才显示输入反馈。 */
+static void sub_redraw(u8 doClear)
+{
+    u8 hasContent;
+
+    hasContent = (u8)(Menu_DateIsActive()
+                   || Menu_IsOpen()
+                   || s_page == PAGE_SERVO
+                   || s_page == PAGE_ALARM_LIST
+                   || s_page == PAGE_POMODORO
+                   || s_page == PAGE_SETTINGS
+                   || s_page == PAGE_RANGE
+                   /* 【掌机模式】只有"选游戏"那一屏副屏才亮；
+                    * 进了游戏（Menu_GameIsPlaying() 为真）就判为无内容
+                    * -> 走下面的"无内容"分支发 DisplayOff(0xAE)。
+                    * 用户要求："I2C 屏幕此时直接关闭"。 */
+                   || (s_page == PAGE_GAME_HALL && !Menu_GameIsPlaying()));
+
+    /* ---- 情况 A：本状态没有内容（主界面等）→ 直接把面板关掉 ---- */
+    if (!hasContent)
+    {
+        if (s_subOn)
+        {
+            I2C_Lock();
+            I2C_OLED_DisplayOff();
+            I2C_Unlock();
+            s_subOn = 0;
+        }
+        return;
+    }
+
+    /* ---- 情况 B：切页面（doClear=1）----
+     * 【2026-09-21 修用户报的"I2C 刷新整个屏幕时偶尔刷新不完整、下边有残留"】
+     *
+     * 顺序是 **熄面板 → 清屏 → 画内容 → 再点亮**。
+     * 面板黑着的时候把该清的清掉、该画的画完，用户看到的就是
+     * "整屏瞬间完整出现"，看不到"清了还没画完"的中间过程。
+     *
+     * 之所以现在敢这么做：I2C_OLED_Clear() 已改成按页批量写（约 2ms，
+     * 原来一字节一次事务要 70~250ms —— 那么长的黑屏是不能接受的）。 */
+    if (doClear)
+    {
+        I2C_Lock();
+        I2C_OLED_DisplayOff();
+        I2C_OLED_Clear();
+        I2C_Unlock();
+        s_subOn = 0;
+    }
+
+    /* ---- 画本页内容（这时面板可能还黑着）----
+     * 注意：这里**不能用 return 提前退出**，否则末尾的"点亮"就漏了。
+     * 另外每一页都必须把 4 行全写满（见 sub_blank_line 的说明）。 */
     if (Menu_DateIsActive())
     {
         if (Menu_DateState() == 0) { sub_draw_icon(); }
         else                       { sub_draw_date_entry(); }
-        return;
     }
-
-    if (Menu_IsOpen())
+    else if (Menu_IsOpen())
     {
-        /* 第 1 级：任务图标 */
-        sub_draw_icon();
-        return;
+        sub_draw_icon();                /* 任务图标：整屏 128x64，天然自覆盖 */
     }
-
-    if (s_page == PAGE_SERVO)
+    else if (s_page == PAGE_SERVO)
     {
-        /* 云台：半圆仪表盘 + 角度行（它自带版面，不从第 1 行开始画） */
         sub_draw_gauge();
-        return;
     }
-
-    if (s_page == PAGE_ALARM_LIST)
+    else if (s_page == PAGE_ALARM_LIST)
     {
-        /* 闹钟：列表态 / 编辑态两套版面（第 4 点）*/
         sub_draw_alarm_page();
-        return;
     }
-
-    if (s_page == PAGE_POMODORO)
+    else if (s_page == PAGE_POMODORO)
     {
-        /* 番茄钟：同样的"列表 + 靠左/靠右"（第 5 点）*/
         sub_draw_pomo_page();
-        return;
     }
-
-    if (s_page == PAGE_SETTINGS)
+    else if (s_page == PAGE_SETTINGS)
     {
-        /* 设置：副屏显示"当前项的功能内容"（第 7 点）*/
         sub_draw_settings_page();
-        return;
+    }
+    else if (s_page == PAGE_RANGE)
+    {
+        sub_draw_range_page();
+    }
+    else if (s_page == PAGE_GAME_HALL)
+    {
+        /* 【掌机模式】走到这里说明是"选游戏"那一屏
+         * （游玩态在 hasContent 阶段就 return 了，根本到不了这里）*/
+        sub_draw_game_page();
     }
 
-    /* 其它页面：保持全黑 */
+    /* ---- 画完了再点亮 ---- */
+    if (!s_subOn)
+    {
+        I2C_Lock();
+        I2C_OLED_DisplayOn();
+        I2C_Unlock();
+        s_subOn = 1;
+    }
 }
 
-void Display_RequestGauge(void)
+/*========================================================================
+ *                      唯一的刷新请求入口
+ *
+ * 照 demo30 的 APP_I2C_OLED_Refresh(clear_screen)：
+ * 调用方只需要回答一个问题 —— **这次是"换页"，还是"只改了个值"？**
+ *   clearScreen = 1 → 换页：先清屏再画（擦掉上一页的残留）
+ *   clearScreen = 0 → 值变了 / 页内移动：只重画本页内容，不清屏（不会闪）
+ *
+ * 两块屏共用这一个参数，因为它表达的是"**这次请求的性质**"，和是哪块屏无关。
+ * 但两块屏的具体策略仍然是分开实现的（代价不同）：
+ *   · 主屏 SPI：便宜（整屏约 1ms）→ 清不清屏主要影响观感
+ *   · 副屏 I2C：贵（清屏 + 4 行约 20ms）→ 必须明确说要不要清
+ *
+ * 注意那个 **单向上闩**：只在传 1 时置位，从不把 1 降回 0 ——
+ * demo30 的写法就是 `if (clear_screen) { global_is_clear_screen = 1; }`。
+ * 这样"换页"这个更重的要求一旦提出，**不会被随后跟来的"值变了"降级**。
+ *========================================================================*/
+void Display_Refresh(u8 clearScreen)
 {
-    s_gaugeDirty = 1;
-}
+    if (clearScreen)
+    {
+        s_needClear = 1;        /* 单向：只置 1，不降回 0 */
+    }
 
-/* 只请求重画任务图标（菜单里挪光标时用）。384 字节，不整屏重画。 */
-void Display_RequestIcon(void)
-{
-    s_iconDirty = 1;
-}
-
-void Display_RequestFull(void)
-{
-    /* 【2026-09-19 修正 · 用户报的"返回上一级后副屏还留着图标"】
-     *
-     * 这里原来有一道**请求点的限流**：距上次请求不到 1200ms 就 `return`，
-     * **连 s_fullRedraw 都不置** —— 也就是说这个请求被**直接丢弃**了。
-     *
-     * 真机路径：在第 1 级任务清单按 KEY4 回第 0 级，要清掉图标；
-     * 如果这一刻距上次整屏重画不到 1200ms（进菜单时刚画过），请求被丢掉，
-     * 副屏就永远停在图标上，再也不会变黑。
-     *
-     * 而执行点本来就有 800ms 限流，它的做法是"return 但保留 s_fullRedraw"，
-     * **不丢信息**、下一拍继续做。所以请求点这道是多余且有害的，删掉。
-     * 现在这里只做一件事：置标志。真正的限流全部交给执行点。 */
-    s_fullRedraw = 1;
+    s_needRedraw = 1;
 }
 
 void Display_SetPage(UIPageId_t page)
@@ -1266,7 +1607,7 @@ void Display_SetPage(UIPageId_t page)
     if (s_page != page)
     {
         s_page = page;
-        s_fullRedraw = 1;
+        Display_Refresh(1);         /* 换页 = 要清屏 */
     }
 }
 
@@ -1275,7 +1616,7 @@ void Display_MainPower(u8 on)
     if (on)
     {
         SPI_OLED_DisPlay_On();
-        s_fullRedraw = 1;
+        Display_Refresh(1);
     }
     else
     {
@@ -1289,30 +1630,6 @@ void Display_Init(void)
     /* ---- 主屏 ---- */
     SPI_OLED_Init();
 
-    /* 【诊断】SPI 通路自检：从屏上那块晶联讯字库 IC 里按地址读回 ASCII '8' 的 16 字节点阵。
-     * 字库 IC 地址公式（驱动源码里的原文）：
-     *     Address = ((MSB-0xB0)*94 + (LSB-0xA1) + 846) * 32     汉字
-     *     Address = 0x3CF80 + (ASCII - 0x20) * 16               半角
-     * '8' = 0x38 -> 0x3CF80 + 0x18 * 16 = 0x3D100
-     *
-     * 判读：
-     *   打印出来的 16 个字节像点阵（不是全 00、也不是全 FF）-> SPI 的 SCL/MOSI/MISO/片选都通，
-     *                                                          主屏黑就只剩"屏本身/供电"这一类可能；
-     *   全 00 或全 FF                                        -> SPI 通路本身没建立起来。
-     * 这一步只读不写屏，不影响任何显示逻辑。 */
-    {
-        u8 chk[16];
-        u8 i;
-
-        SPI_OLED_get_data_from_ROM(0x03, 0xD1, 0x00, chk, 16);
-
-        printf("[SPI] ROM readback ('8'): ");
-        for (i = 0; i < 16; i++)
-        {
-            printf("%02X ", (unsigned)chk[i]);
-        }
-        printf("\r\n");
-    }
 
     SPI_OLED_ColorTurn(0);
     SPI_OLED_DisplayTurn(0);
@@ -1322,7 +1639,6 @@ void Display_Init(void)
      * 这是"诊断手段"，输出不依赖任何任务刷新（规范第四节）——
      * 只要屏亮且能看到这行字，就说明 SPI 线序和屏本身是好的。 */
     SPI_OLED_Display_GB2312_string(0, 0, (u8 *)"ALARM BOOT OK");
-    printf("[SPI] main screen init done\r\n");
 
     /* ---- 副屏 ---- */
     I2C_Lock();
@@ -1332,59 +1648,29 @@ void Display_Init(void)
     I2C_Unlock();
 
     /* 不在这里单独 Clear/写字：紧接着的第一次 Display_Poll 会走整屏重画，
-     * 由 sub_full_redraw() 把 4 行完整刷一遍（每一行都会清掉自己在的 2 页）。 */
+     * 由 sub_redraw(1) 把 4 行完整刷一遍（每一行都会清掉自己在的 2 页）。 */
 
-    s_fullRedraw = 1;
+    Display_Refresh(1);
 }
 
-/* 主屏（SPI）整屏重画 + 同步"上一帧"记录。
+/* 主屏重画：doClear 决定要不要先清屏（含义同 Display_Refresh 的参数）。
+ * "数据快照"（s_last*）由调用方（Display_Poll）统一同步，这里不管。
  *
- * 抽成函数是因为现在有**两条**路径会重画主屏：
- *   ① 菜单挪光标（s_mainDirty）—— 只影响主屏
- *   ② 切页面（s_fullRedraw）  —— 主屏和副屏都要重画
- * 两条都必须同步 s_last*，否则紧接着的增量刷新会白画一遍。
- *
- * 【为什么要单开 ① 这条路 —— 真机 bug】
- * 现象：进任务清单后按 KEY3，有时"没反应"，再按一下会 skip 掉中间那一项
- *       （0 时钟 -> 按键 -> 还是 0 时钟 -> 再按 -> 直接到 2 番茄钟），
- *       刚插 USB 时特别容易触发。
- * 根因：原来 L1 里挪一次光标就调 Display_RequestFull()，而 s_fullRedraw 的执行点
- *       带 800ms 限流（那个限流是为了保护 I2C 总线）。主屏明明只要软件 SPI 画 4 行
- *       （约 1ms），却被 I2C 的限流一起挡住 —— 屏幕没动，用户以为没生效，
- *       再按一次 cursor 已经加了两格，于是"跳项"。
- * 现在主屏重画走 s_mainDirty，**不受 I2C 限流约束**。 */
-static void main_repaint(void)
+ * 【历史 · 为什么现在不怕"跳项"了】
+ * 曾经主屏另有一条"只重画主屏"的请求路径，起因是真机 bug：
+ * 进任务清单后按 KEY3 偶尔"没反应、再按跳一格"——
+ * 因为挪光标请求的是"整屏重画"，而整屏重画的执行点带 100ms 限流（保护 I2C），
+ * 主屏（软件 SPI 约 1ms）被连累一起挡住。
+ * 收敛成统一入口之后，**限流只对"要清屏"的那种生效**（见 Display_Poll），
+ * 页内移动（clearScreen=0）完全不受限流约束 —— 所以"跳项"不会回来。 */
+static void main_repaint(u8 doClear)
 {
-    u8 i;
-    u8 alarmOn = 0;
-
     if (!s_mainOn)
     {
         return;
     }
 
-    main_full_redraw();
-
-    for (i = 0; i < ALARM_MAX; i++)
-    {
-        if (g_alarms[i].enable)
-        {
-            alarmOn++;
-        }
-    }
-
-    s_lastHour    = g_clock.hour;
-    s_lastMinute  = g_clock.minute;
-    s_lastDay     = g_clock.day;
-    s_lastTemp    = g_tempX10;
-    s_lastHumi    = g_humi;
-    s_lastAlarmOn = alarmOn;
-    s_lastValid   = Sensor_HumiValid();
-}
-
-void Display_RequestMain(void)
-{
-    s_mainDirty = 1;
+    main_redraw(doClear);
 }
 
 void Display_Poll(void)
@@ -1447,14 +1733,13 @@ void Display_Poll(void)
         Alarm_OnRtcIrq();               /* 清时钟芯片中断标志（I2C 读写） */
     }
 
-    s_dbgPoll++;            /* 诊断：TASK_RENDER 活性 */
 
     /* 【2026-09-19 删除周期整屏重画】
      * demo30 运行期**没有任何周期性整屏刷新** —— 它只在切页时 Clear 一次，
      * 之后只对"内容变了的那一行"写一次 ShowString（32 字节）。
      * 我原来每 10 秒强制整屏重画（Clear 1024 字节 + 4 行），
      * 那个"清屏与重画之间的窗口"正是"某一行闪乱码"的机会。
-     * 所以删掉。整屏重画只在 s_fullRedraw（切页面）时发生。 */
+     * 所以删掉。整屏重画只在"换页"那种请求（Display_Refresh(1)）时发生。 */
 
     /* 统计开着的闹钟组数，用于判断环境行要不要重画 */
     for (i = 0; i < ALARM_MAX; i++)
@@ -1465,57 +1750,43 @@ void Display_Poll(void)
         }
     }
 
-    /* 【2026-09-18 修正 · 关键】限流改到"执行点"。
-     *
-     * 原来限流放在 Display_RequestFull()（请求点），但 Display_SetPage() 也会
-     * 直接置 s_fullRedraw —— 切页面绕过了限流。真机数据：
-     *     [DISP] poll=1000 sub=10 full=18
-     * 5 秒内做了 18 次整屏重画 = 18 x 350ms = 6.3 秒 I2C 挤进 5 秒窗口，
-     * 总线又被打满。放在执行点才真正限得住：不管谁请求，1.2 秒内只做一次。 */
-    /* ---- 任务图标：只重画那块 64x48 ---- */
-    if (s_iconDirty)
+    /* ==================================================================
+     *       刷新请求：**只有一个入口**（照 demo30 的模型收敛）
+     * ================================================================== */
+    if (s_needRedraw)
     {
-        s_iconDirty = 0;
-        sub_draw_icon();
-    }
+        u8 clearNow = s_needClear;
 
-    /* ---- 云台仪表盘：只重画"半圆 + 粗针 + 角度行"那一小块 ---- */
-    if (s_gaugeDirty)
-    {
-        s_gaugeDirty = 0;
-        sub_draw_gauge();
-    }
-
-    /* ---- 主屏单独的整屏重画请求（只影响主屏的变化，例如挪菜单光标）----
-     * 放在限流判断**之前**：主屏是软件 SPI，画一次约 1ms，
-     * 既不需要限流，更不能被 I2C 的 800ms 限流挡在后面 ——
-     * 那正是"按 KEY3 没反应、再按跳一格"的根因。 */
-    if (s_mainDirty)
-    {
-        s_mainDirty = 0;
-        main_repaint();
-    }
-
-    if (s_fullRedraw)
-    {
-        /* 【点 2b 之后放宽】原来 800ms 是为"一次整屏重画约 350ms"的时代设的。
-         * 现在按页批量写，一次整屏只要约 5ms，连按 100 次也才半秒，
-         * 所以放宽到 100ms：既挡得住程序性洪流，又不拖慢"挪选择 / 切页面"。 */
-        if (s_lastFullExecMs != 0 && SysTick_Elapsed(s_lastFullExecMs) < 100U)
+        /* 执行点限流：**只对"要清屏"的那种**限流（它最贵）。
+         * 这里是"return 但保留 s_needRedraw" —— **延后执行，不丢请求**。
+         * （请求点绝不能限流：那会把请求直接丢掉，见 §三.23 的教训。） */
+        if (clearNow && s_lastFullExecMs != 0
+            && SysTick_Elapsed(s_lastFullExecMs) < 100U)
         {
-            return;             /* 还没到点：保留 s_fullRedraw，下一拍再做 */
+            return;                 /* 还没到点：保留标志，下一拍再做 */
         }
-        s_lastFullExecMs = SysTick_Get();
 
-        main_repaint();         /* 主屏（内部自己判断 s_mainOn 并同步 s_last*） */
+        s_needRedraw = 0;
+        s_needClear  = 0;
 
-        sub_full_redraw();      /* 内部按页加锁，外部不再整段持锁 */
-        s_dbgFull++;
+        if (clearNow)
+        {
+            s_lastFullExecMs = SysTick_Get();
+            s_envTimer       = 0;
+        }
 
-        s_fullRedraw = 0;
-        s_envTimer   = 0;
+        /* 两块屏各画一遍。清不清屏是**同一个参数** ——
+         * 因为它表达的是"这次请求的性质"，和是哪块屏无关。 */
+        main_repaint(clearNow);
+        sub_redraw(clearNow);
 
-        return;
+        /* 重画之后同步"数据快照"，免得紧接着又触发一次增量刷新 */
+        s_lastHour    = g_clock.hour;
+        s_lastMinute  = g_clock.minute;
+        s_lastDay     = g_clock.day;
+        s_lastTemp    = g_tempX10;
+        s_lastHumi    = g_humi;
+        s_lastValid   = Sensor_HumiValid();
     }
 
     /* ---- 判断主屏哪几行需要重画 ---- */
@@ -1542,7 +1813,7 @@ void Display_Poll(void)
     }
 
     /* 【2026-09-19 用户要求 · 删除】副屏原来每秒刷"时间行/日期行/VOL·SONG 行"，
-     * 现在这套界面整体去掉了（见 sub_full_redraw 的说明），所以这里不再有任何周期性写屏。
+     * 现在这套界面整体去掉了（副屏只在内容形态变化时整块重画），所以这里不再有任何周期性写屏。
      * 副屏只在"内容形态变化"时整块重画：切菜单 / 换任务 / 云台转针。 */
 
     /* ---- 主屏（SPI）增量刷新 【2026-09-19 修"只有切菜单才刷新"】
@@ -1551,13 +1822,26 @@ void Display_Poll(void)
      * 用矩阵键盘校时后主屏的大字时钟也不动 —— **只有按 KEY2/KEY4 切一次菜单才会变**。
      *
      * 根因：needBig / needDate / needEnv 这三个判据一直在算，
-     * 但**从来没有被消费**（判据是死代码）—— 主屏只在 s_fullRedraw 时才重画，
-     * 而 s_fullRedraw 只在切页面时置位。
+     * 但**从来没有被消费**（判据是死代码）—— 主屏只在"换页"（Display_Refresh(1)）
+     * 时才重画，而那种请求只在切页面时发出。
      *
      * 现在把消费端接上：和副屏一样，"内容真变了才重画"。
      * 主屏是软件 SPI，整屏约 1.3ms，重画一行很便宜，不需要限流。
      * 只在第 0 级（大字时钟）才做 —— 菜单和其它任务页由切页时的整屏重画负责。 */
-    if (s_page == PAGE_HOME && !Menu_IsOpen())
+    /* 【2026-09-21 用户报第 1 条 b · 关键修复】
+     *   "在'修改年月日'这个三级菜单的地方，主菜单的时间或者温湿度只要变化了
+     *    就会覆盖当前的第三级菜单"
+     *
+     * 根因：原来这里的守卫只有 `s_page == PAGE_HOME && !Menu_IsOpen()`。
+     * 而「日期和时间」任务是**不摞页面**的（menu_enter 里进来就把 s_menuOpen 清 0、
+     * 只置 s_dtActive），所以那个任务里恰好满足
+     *     s_page == PAGE_HOME 且 Menu_IsOpen() == 0
+     * -> 大字时钟/日期/温湿度的**周期性增量刷新一直在跑**，
+     *   每隔 2 秒（needEnv 的强制节拍）以及每次分钟变化就把 dt 的版面糊掉。
+     *
+     * 修法：把守卫收紧成"**真的停在第 0 级大字时钟**"三个条件同时成立。
+     * 三个条件缺一不可：页面是主页、菜单没打开、日期时间任务也没在跑。 */
+    if (s_page == PAGE_HOME && !Menu_IsOpen() && !Menu_DateIsActive())
     {
         if (needBig)
         {

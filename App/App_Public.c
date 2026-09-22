@@ -35,9 +35,7 @@ volatile bit g_reqClockRecover = 0;
 volatile bit g_reqAlarmApply   = 0;
 volatile bit g_reqRtcIrq       = 0;
 
-/* 主界面矩阵键盘校时的输入状态（定义说明见 App_Public.h） */
-u16 g_timeEntry    = 0;
-u8  g_timeEntryCnt = 0;
+/* 【2026-09-22 清理】此处原来的 g_timeEntry / g_timeEntryCnt 已删除（理由见 App_Public.h）。 */
 
 /*
  * 读取系统时钟（毫秒）。

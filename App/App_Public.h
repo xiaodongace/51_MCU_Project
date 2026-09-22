@@ -53,7 +53,10 @@
  *                          量纲与常量
  *========================================================================*/
 
-#define ALARM_MAX           8       /* 闹钟组数（《01》要求 8 组） */
+/* 【2026-09-21 用户要求】"闹钟只要三个，多了任意分不清" —— 8 组改 3 组。
+ * 数据层/存储/上位机协议都按这个宏走，改一处全跟着变
+ * （存储 0 号区占用：OFF_ALARMS(20) + 3*5 = 35 字节，页 512 字节，宽裕）。*/
+#define ALARM_MAX           3       /* 闹钟组数 */
 
 /* days 掩码：bit0=周一 … bit6=周日（本工程自定义，转 PCF8563 周值时再映射） */
 #define DAY_MON             0x01
@@ -135,7 +138,10 @@ typedef struct
 /* 【第 7 点】音量语义 0..10 -> 0..100、新增"震动强度"，
  * 旧 EEPROM 里的数据不再兼容 —— 版本号 +1，让 Storage_Load() 判定为
  * "不是本版本"，重新填默认值。**旧设置会重置一次**。 */
-#define SETTINGS_VERSION    2
+/* 【2026-09-21】ALARM_MAX 8 -> 3，0 号区里的闹钟数据长度变了；
+ * 同时出厂默认从"第 1 组开"改成"3 组全关" —— 版本号 +1 让 Storage_Load
+ * 判定为"不是本版本"，重新填默认值。**旧设置会重置一次**。 */
+#define SETTINGS_VERSION    3
 
 /*========================================================================
  *                        输入事件（App_Input 生产，App 层消费）
@@ -185,11 +191,10 @@ typedef enum
 
     /* ---- 掌机模式预留（M2），编号从现在往后排，不占用上面 ---- */
     PAGE_GAME_HALL,     /* 游戏大厅 */
-    PAGE_GAME_SNAKE,    /* 贪吃蛇 */
-    PAGE_GAME_BRICK,    /* 打砖块 */
-    PAGE_GAME_PLANE,    /* 飞机大战 */
-    PAGE_GAME_DAILY,    /* 每日挑战 */
-    PAGE_GAME_OVER,     /* 游戏结束/结算 */
+    /* 【2026-09-22 清理】原来这里还有 5 个游戏子页 ID：
+     *   PAGE_GAME_SNAKE / BRICK / PLANE / DAILY / OVER。
+     * 掌机模式改成"「7 游戏」页内两个状态"之后（见 App_Menu.c 的 Game_Poll），
+     * 游戏内部状态由 s_gameState 表达、不再用页面 ID 区分，全工程已无引用。 */
 
     PAGE_COUNT
 } UIPageId_t;
@@ -242,14 +247,11 @@ extern volatile bit g_reqClockRecover;  /* 请求时钟自救（重设默认时间） */
 extern volatile bit g_reqAlarmApply;    /* 请求把硬件闹钟重写一遍 */
 extern volatile bit g_reqRtcIrq;        /* 请求处理时钟芯片中断（清标志） */
 
-/*
- * 主界面用矩阵键盘校时的临时状态。
- *   g_timeEntryCnt == 0 表示没在输入；每按一个数字加 1，累计到 4 位就写入芯片。
- *   g_timeEntry 是累计出来的数字（HHMM）。
- * 放全局是为了让 App_Display 能在副屏上回显"输到第几位了"。
- */
-extern u16 g_timeEntry;
-extern u8  g_timeEntryCnt;
+/* 【2026-09-22 清理】原来这里有两个全局量 g_timeEntry / g_timeEntryCnt，
+ * 给"在主界面用矩阵键盘直接输 HHMM 校时"那条快捷方式用。
+ * 校时改成独立的「0 日期和时间」任务之后（见 App_Menu.c 的 date_time_key），
+ * 那条快捷方式被取消了，这两个变量全工程零读写 —— 已删除。
+ * 现在的校时输入状态是 App_Menu.c 里的 s_dtY / s_dtMD / s_dtH / s_dtM / s_dtCnt。 */
 
 /* 算时间差，自动处理 u32 回绕。用法与 Key_Scan 里的 (now - t0) 完全一致 */
 #define SysTick_Elapsed(t0)     (g_sysTick - (u32)(t0))

@@ -208,7 +208,7 @@ static void pot_scan(void)
      *
      * 为什么必须加：每一条 EVT_POT 在 App_Menu 里会触发
      *   1) Storage_SaveAll()  —— 一次 EEPROM 扇区擦写（几十毫秒，还带 EA=0）
-     *   2) Display_RequestFull() —— 一次约 350ms 的整屏重画
+     *   2) Display_Refresh(1) —— 一次约 350ms 的整屏重画
      * 而电位器的 ADC 读数天然有抖动。真机数据表明：5 秒内做了 16 次整屏重画，
      * 16 x 350ms = 5.6 秒的 I2C 传输挤进 5 秒窗口 => 总线 100% 饱和
      * => I2C_Lock 抢不到 => 4 秒超时强夺 => 两个任务同时发字节 => 控制器被写坏（黑屏）。

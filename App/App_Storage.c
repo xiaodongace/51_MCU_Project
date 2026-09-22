@@ -53,8 +53,9 @@ void Storage_Default(void)
 
     g_settings.magic       = SETTINGS_MAGIC;
     g_settings.version     = SETTINGS_VERSION;
-    g_settings.volume      = 60;    /* 60% —— 第 7 点改成百分比 */
-    g_settings.vibrate     = 50;    /* 50% 震动强度 */
+    /* 【2026-09-22 用户要求】出厂默认音量改为 **1**、震动强度 25% */
+    g_settings.volume      = 1;
+    g_settings.vibrate     = 25;    /* 25% 震动强度 */
     g_settings.alert_mode  = ALERT_RING;
     g_settings.song        = 0;
     g_settings.pomodoro_work = 25;
@@ -78,8 +79,9 @@ void Storage_Default(void)
         g_alarms[i].song   = 0;
     }
 
-    /* 出厂默认：第 1 组开着，工作日 07:00 响 —— 让用户一上电就能看到东西 */
-    g_alarms[0].enable = 1;
+    /* 【2026-09-21 用户要求】"最开始都关闭" —— 出厂默认 8 组全关，
+     * 由用户在「1 闹钟」里按 KEY2 逐组打开。
+     * （原来是把第 1 组默认打开，方便一上电就能看到东西。） */
 }
 
 /*========================================================================

@@ -74,10 +74,6 @@ void Motor_On(u8 level)
      * 第 7 点把总开关打开后才报出来。 */
     u16 duty;
 
-    /* 【2026-09-19】无论开关如何都打一行日志：
-     * 用来确认"嗡嗡嗡"到底是不是马达引起的 —— 只要这行出现，就说明马达被启动了。 */
-    printf("[MOTOR] Motor_On(level=%d) called (MOTOR_ENABLE=%d)\r\n",
-           (int)level, (int)MOTOR_ENABLE);
 
     /* 【第 7 点】显式调用 = 取消"定时自动停"。
      * 否则闹铃正在震动时，之前某次 Motor_Vibrate 的计时到点会把闹铃一起关掉。 */

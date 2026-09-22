@@ -39,17 +39,34 @@ static Note_t code s_star[] =
 };
 
 /*------------------------------------------------------------------------
- * 3. 生日快乐
- *    简谱：5 5 6 5 1' 7 - | 5 5 6 5 2' 1' - |
- *          5 5 5' 3 1 7 6 | 4 4 3 1 2 1 -
- *    1' / 2' / 5' 是高八度。
+ * 3. 马兰开花二十一（跳皮筋 / 拍手童谣）
+ *
+ *    歌词与断句：
+ *      小皮球，香蕉梨，马兰开花二十一
+ *      二五六，二五七，二八二九三十一
+ *
+ *    每句的音符数严格对着字数排（六 / 七 / 六 / 七）：
+ *      小皮球，香蕉梨      6 字 -> 6 个音
+ *      马兰开花二十一      7 字 -> 7 个音
+ *      二五六，二五七      6 字 -> 6 个音
+ *      二八二九三十一      7 字 -> 7 个音
+ *    四句都落在中八度，末句收在主音（M1），是儿歌常见的走法。
+ *
+ *    【必须说明】这是**我按童谣的节奏型和歌词断句编配的简易版**，
+ *    不是我抄来的标准旋律（这首童谣各地唱法不一，没有唯一版本）。
+ *    如果你手上有具体简谱（比如 5 5 3 5 6 5），发我，我按你的改 ——
+ *    只要替换下面这一张表就行，引擎不用动。
  *------------------------------------------------------------------------*/
-static Note_t code s_birthday[] =
+static Note_t code s_malan[] =
 {
-    {M5, BASE_Q}, {M5, BASE_Q}, {M6, BASE_Q}, {M5, BASE_Q}, {H1, BASE_Q}, {M7, BASE_H},
-    {M5, BASE_Q}, {M5, BASE_Q}, {M6, BASE_Q}, {M5, BASE_Q}, {H2, BASE_Q}, {H1, BASE_H},
-    {M5, BASE_Q}, {M5, BASE_Q}, {H5, BASE_Q}, {M3, BASE_Q}, {M1, BASE_Q}, {M7, BASE_Q}, {M6, BASE_H},
-    {M4, BASE_Q}, {M4, BASE_Q}, {M3, BASE_Q}, {M1, BASE_Q}, {M2, BASE_Q}, {M1, BASE_H},
+    /* 小皮球，香蕉梨 */
+    {M5, BASE_Q}, {M5, BASE_E}, {M3, BASE_E}, {M5, BASE_Q}, {M6, BASE_E}, {M5, BASE_E},
+    /* 马兰开花二十一 */
+    {M6, BASE_Q}, {M6, BASE_E}, {M5, BASE_E}, {M3, BASE_Q}, {M3, BASE_E}, {M2, BASE_E}, {M1, BASE_Q},
+    /* 二五六，二五七 */
+    {M3, BASE_E}, {M3, BASE_E}, {M5, BASE_Q}, {M3, BASE_E}, {M3, BASE_E}, {M2, BASE_Q},
+    /* 二八二九三十一 */
+    {M3, BASE_E}, {M5, BASE_E}, {M6, BASE_Q}, {M5, BASE_E}, {M3, BASE_E}, {M2, BASE_E}, {M1, BASE_Q},
 };
 
 u16 Songs_Length(u8 songId)
@@ -58,7 +75,7 @@ u16 Songs_Length(u8 songId)
     {
     case 1: return (u16)(sizeof(s_tiger) / sizeof(s_tiger[0]));
     case 2: return (u16)(sizeof(s_star) / sizeof(s_star[0]));
-    case 3: return (u16)(sizeof(s_birthday) / sizeof(s_birthday[0]));
+    case 3: return (u16)(sizeof(s_malan) / sizeof(s_malan[0]));
     default: return 0;
     }
 }
@@ -74,7 +91,7 @@ void Songs_Get(u8 songId, u16 idx, u8 *tone, u16 *ms)
     {
     case 1: p = s_tiger;    break;
     case 2: p = s_star;     break;
-    case 3: p = s_birthday; break;
+    case 3: p = s_malan; break;
     default: return;
     }
 

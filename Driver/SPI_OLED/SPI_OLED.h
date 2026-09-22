@@ -2,6 +2,8 @@
 #define __SPI_OLED_H
 
 #include "config.h"
+#include "GPIO.h"
+#include "MATH.H"
 
 // SCLK
 sbit SPI_OLED_SCL=P5^0;    
@@ -58,4 +60,15 @@ void SPI_OLED_Display_string_5x7(u8 x,u8 y,u8 *text);
 /* 本项目修正：形参由 float 改为 num100 = 数值 x 100，避免链入浮点库 */
 void SPI_OLED_ShowNum(u8 x,u8 y,u32 num100,u8 len);
 void SPI_OLED_Init(void);
+
+
+//=====================================开机动画
+void SPI_OLED_Refresh();                                              // 刷新显示
+void SPI_OLED_RefreshPart(u8 xstart, u8 ystart, u8 width, u8 height); // 刷新指定区域
+void SPI_OLED_GFill();                                                // 全屏填充
+void SPI_OLED_GClear();                                               // 全屏清除
+void SPI_OLED_DrawPoint(u8 x, u8 y);                                  // 绘制点
+void SPI_OLED_ClearPoint(u8 x, u8 y);                                 // 清除点
+
+
 #endif

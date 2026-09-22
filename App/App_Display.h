@@ -26,18 +26,20 @@
 void Display_Init(void);
 
 /* 请求下一拍做一次全屏重绘（切页面、从响铃页返回时用） */
-void Display_RequestFull(void);
-
-/* 只请求重画主屏（SPI）。
- * 用于"只影响主屏"的变化（例如任务清单挪光标）—— 它**不受 I2C 的整屏限流约束**，
- * 因为主屏是软件 SPI，画一次约 1ms，根本没有限流的必要。 */
-void Display_RequestMain(void);
-
-/* 只请求重画云台仪表盘（半圆 + 粗针 + 角度行） */
-void Display_RequestGauge(void);
-
-/* 只请求重画任务清单的图标（64x48，384 字节） */
-void Display_RequestIcon(void);
+/*------------------------------------------------------------------------
+ *                      唯一的刷新请求入口
+ *
+ * 照参考工程 demo30 的 App/App_OLED.c 第 52 行：
+ *     APP_I2C_OLED_Refresh(u8 clear_screen);
+ * 调用方只需要回答一个问题 —— **这次是"换页"，还是"只改了个值"？**
+ *
+ *   clearScreen = 1 → 换页：先清屏再画（擦掉上一页的残留）
+ *   clearScreen = 0 → 值变了 / 页内移动：只重画本页内容，**不清屏**（不会闪）
+ *
+ * 收敛前这里是 5 个函数（Full / Rows / Main / Icon / Gauge），
+ * 语义重叠、容易用错，现在只留这一个。
+ *------------------------------------------------------------------------*/
+void Display_Refresh(u8 clearScreen);
 
 /* 当前页面编号发生变化时通知显示层（用于副屏标题） */
 void Display_SetPage(UIPageId_t page);

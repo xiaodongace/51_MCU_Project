@@ -170,18 +170,54 @@ void I2C_OLED_Display_Off(void)
 	I2C_OLED_WR_Byte(0XAE,I2C_OLED_CMD);  //DISPLAY OFF
 }		   			 
 //清屏函数,清完屏,整个屏幕是黑色的!和没点亮一样!!!	  
-void I2C_OLED_Clear(void)  
-{  
-	u8 i,n;		    
-	for(i=0;i<8;i++)  
-	{  
-		I2C_OLED_WR_Byte (0xb0+i,I2C_OLED_CMD);    //设置页地址（0~7）
-		I2C_OLED_WR_Byte (0x00,I2C_OLED_CMD);      //设置显示位置—列低地址
-		I2C_OLED_WR_Byte (0x10,I2C_OLED_CMD);      //设置显示位置—列高地址   
-		for(n=0;n<128;n++)I2C_OLED_WR_Byte(0,I2C_OLED_DATA); 
-	} //更新显示
+/*------------------------------------------------------------------------
+ * 显示开 / 关（SSD1306 命令 0xAF = ON，0xAE = OFF）
+ *
+ * 【2026-09-21 用户要求】"建议在主界面时就关闭 I2C 屏幕"
+ *
+ * 与其一遍遍清屏去追"没清干净的一点残留"，不如**直接把面板关掉**：
+ * 关了之后控制器里剩什么都不可能亮，绝对干净，而且省电。
+ *------------------------------------------------------------------------*/
+void I2C_OLED_DisplayOn(void)
+{
+    I2C_OLED_WR_Byte(0xAF, I2C_OLED_CMD);
 }
 
+void I2C_OLED_DisplayOff(void)
+{
+    I2C_OLED_WR_Byte(0xAE, I2C_OLED_CMD);
+}
+
+void I2C_OLED_Clear(void)
+{
+    /* 【2026-09-21 优化】原来这里是"一字节一次 I2C 事务"：
+     * 8 页 x (3 字节定位 + 128 字节数据) = **1048 次事务**，按 400kHz 算约 70~250ms。
+     * 这期间屏幕上是"清了还没画完"的中间状态 —— 用户报的
+     *    "I2C 刷新整个屏幕的时候，偶尔就会出现刷新不完整、下边空白区域有残留"
+     * 就是看到了这个中间过程。
+     *
+     * 厂家库的 I2C_WriteNbyte() 本来就是"一次事务连发多字节"，
+     * 所以改成**一次定位 + 一次连发 128 字节**：
+     *   8 页 x 2 次事务 = **16 次事务**，约 2ms，快约 50 倍。
+     *
+     * 顺带：这一改之后，"整屏切换"的耗时从 ~250ms 降到 ~2ms，
+     * 于是可以放心地用"熄面板 -> 清屏 -> 画内容 -> 点亮"的做法
+     * （见 App_Display.c 的 sub_redraw）。 */
+    static u8 xdata s_zero[128];
+    u8 i;
+    u8 page;
+
+    for (i = 0; i < 128; i++)
+    {
+        s_zero[i] = 0;
+    }
+
+    for (page = 0; page < 8; page++)
+    {
+        I2C_OLED_Set_Pos(0, page);
+        I2C_WriteNbyte(0x78, 0x40, s_zero, 128);
+    }
+}
 //在指定位置显示一个字符,包括部分字符
 //x:0~127
 //y:0~63				 

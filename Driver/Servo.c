@@ -46,7 +46,7 @@ static void servo_fill_cfg(PWMx_InitDefine *c, u16 period, u16 duty, u8 eno)
  *
  * 【用户 2026-09-19 报的现象与判断】
  *   "没进入 4 云台任务时容易触发舵机旋转；进过任务再退出就不触发了。"
- * ⇒ 完全正确：复位后 P2 的输出锁存器是 0xFF（全高），而 P2.5 默认是**准双向口**
+ * -> 完全正确：复位后 P2 的输出锁存器是 0xFF（全高），而 P2.5 默认是**准双向口**
  *   （弱上拉），一直没被配置过 —— 舵机信号线"一直是高"相当于一个超长脉宽，
  *   舵机会直接甩到极限位置。
  *   而 Servo_Off() 里那句拉低，只在"进过一次云台又退出"之后才生效，
@@ -92,12 +92,14 @@ void Servo_Init(void)
      *   退出再进：调不动、P2.5 没有波形。
      * 串口日志也对得上：[SERVO] init 只出现 1 次，[SERVO] off 出现 4 次。
      *
-     * 参考工程 demo30 的做法（用户指出的）：
-     *   进任务 -> os_create_task(TASK_Motor)，任务体第一件事就是
-     *             GPIO_config() + PWM_config()，**每次都完整配置一遍**
-     *             （其中 PWM_Configuration(PWM6, ..., ENO6P) 会把输出重新使能）；
-     *   离开任务 -> TASK_MOTOR_reset() 里 PWMB_CC6E_Disable() + os_delete_task()。
-     * ⇒ **进入 = 完整初始化，不依赖上一次留下的任何状态。** 这里照做。 */
+     * 参考工程 v3.1 的做法（用户指出的）：它把每个外设做成独立任务，
+     *   进业务 -> os_create_task(TASK_Motor)，任务体第一件事就是 GPIO_config + PWM_config，
+     *             **每次都完整配置一遍**（其中 PWM_Configuration(PWM6,...,ENO6P) 会把输出重新使能）；
+     *   离业务 -> TASK_MOTOR_reset 里 PWMB_CC6E_Disable() + os_delete_task()。
+     *
+     * 本工程的任务是按职责分的（不按外设），没有"任务体重跑"这个时机，
+     * 所以把同一件事挂在 App_Menu.c 的 menu_task_enter() 上 —— 本函数被它调用。
+     * **原则照做：进入 = 完整初始化，不依赖上一次留下的任何状态。** */
 
     P2_MODE_OUT_PP(GPIO_Pin_5);         /* P2.5 = PWM3N，推挽输出 */
     PWM3_USE_P24P25();                  /* 通道 3 输出脚切到 P2.4 / P2.5（只用 N 那一半）*/
@@ -137,7 +139,6 @@ void Servo_Init(void)
 
     s_inited = 1;
 
-    printf("[SERVO] init P2.5=PWM3N 50Hz, PERIOD=%u\r\n", (unsigned)SERVO_PERIOD);
 
     Servo_SetAngle(s_angle);
 }
@@ -169,7 +170,6 @@ void Servo_Off(void)
      * P2 的其它位是 LED1/2(P2.7/P2.6) 和 LED5~8(P2.3~P2.0)，不受影响。 */
     P2 &= (u8)(~0x20);
 
-    printf("[SERVO] off\r\n");
 }
 
 void Servo_SetAngle(u8 angle)

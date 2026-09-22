@@ -21,43 +21,6 @@ static u8 s_failStreak = 0;
 
 /* 待写入芯片的时间（由 Clock_Set 登记，Clock_SetNow 执行） */
 static Clock_t s_pendingClock;
-
-/*
- * 诊断：把 PCF8563 时间寄存器区的 7 个原始字节打出来。
- *
- * 为什么需要它：`clock valid=0` 只说明"读回来的值过不了合法性检查"，
- * 但过不了的原因可能是总线没应答（全 FF）、芯片没走时（全 00）、
- * 世纪位异常、或者只是秒的 VL 位。这三者处理方式完全不同。
- * 打出原始字节，一眼就能分辨。
- *
- * 寄存器含义（驱动注释原文）：
- *   [0] 秒  VL 0 1 1 - 0 0 0 0      [1] 分  x 1 1 1 - 0 0 0 0
- *   [2] 时  x x 1 1 - 0 0 0 0      [3] 日  x x 1 1 - 0 0 0 0
- *   [4] 周  x x x x - x 0 0 0      [5] 月/世纪 C x x 1 - 0 0 0 0
- *   [6] 年  1 1 1 1 - 0 0 0 0
- */
-static void clock_debug_raw(void)
-{
-    u8 p[7];
-    u8 i;
-
-    for (i = 0; i < 7; i++)
-    {
-        p[i] = 0;
-    }
-
-    I2C_Lock();
-    I2C_ReadNbyte(PCF8563_ADDR, PCF8563_REG, p, 7);
-    I2C_Unlock();
-
-    printf("[RTC] raw regs 02..08: ");
-    for (i = 0; i < 7; i++)
-    {
-        printf("%02X ", (unsigned)p[i]);
-    }
-    printf("\r\n[RTC] expect: sec/mi/hr/day/wk/mon/yr, 全 FF=没人应答, 全 00=芯片没走时\r\n");
-}
-
 static u8 s_valid = 0;
 
 /* Sakamoto 算法：由公历日期算星期，纯整数，无查表大数组。
@@ -391,13 +354,9 @@ void Clock_Init(void)
         }
     }
 
-    printf("[RTC] init done, rst=%d\r\n", (int)rst);
 
     if (rst != 0)
     {
-        /* 读出来是无效值 —— 先把原始寄存器打出来便于定位 */
-        clock_debug_raw();
-
         /*
          * 【真机修正 · 关键】这一步必须写芯片。
          *
@@ -416,7 +375,8 @@ void Clock_Init(void)
          * 芯片正常走时时绝不重设，两条规则不冲突。
          *
          * 写入的默认值是 2026-01-01 00:00:00 —— 只是为了让它跑起来。
-         * 真实时间需要用户校准（见下面 printf 的提示，或 App_Uart 的 0x02 命令）。 */
+         * 真实时间需要用户校准：主界面用矩阵键盘直接输 4 位数字(HHMM)，
+         * 或串口发 App_Uart 的 0x02 命令。 */
         g_clock.year   = 2026;
         g_clock.month  = 1;
         g_clock.day    = 1;
@@ -429,12 +389,9 @@ void Clock_Init(void)
 
         if (Clock_IsValid())
         {
-            printf("[RTC] 已写入默认时间 2026-01-01 00:00:00，时钟开始走时。\r\n");
-            printf("[RTC] 请校时：串口发 0x02 命令，或主界面用矩阵键盘直接输 4 位数字(HHMM)。\r\n");
         }
         else
         {
-            printf("[RTC] 写入后仍然读不回有效值 -> 芯片/电池/上拉有问题，请查硬件。\r\n");
             s_valid = 0;
         }
 

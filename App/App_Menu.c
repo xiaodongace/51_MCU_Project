@@ -32,11 +32,16 @@
 #include "App_Sensor.h"
 #include "App_Storage.h"
 #include "App_Uart.h"
-#include "App_Game.h"
 #include "Servo.h"
 #include "Motor.h"
-#include "Buzzer.h"      /* 云台：进页面初始化 PWM、离开时关输出 */
+#include "Buzzer.h"
+#include "HC_SR04.h"      /* 云台：进页面初始化 PWM、离开时关输出 */
 #include "LED.h"        /* 上电进度指示收尾 + 按键事件指示灯 */
+#include "Keys.h"       /* Keys_IsPressed：掌机模式的"4 键同按强制退出"要用 */
+/* 三个游戏（在 App\Game\ 子目录，该目录不在 IncludePath 里，所以写相对路径）*/
+#include "Game/App_GmSnake.h"
+#include "Game/App_GmBrick.h"
+#include "Game/App_GmPlane.h"        /* 上电进度指示收尾 + 按键事件指示灯 */
 #include "NixieScan.h"  /* 数码管内容更新 */
 
 #define MENU_STACK_MAX  4
@@ -56,6 +61,12 @@ static u32 s_lastActMs = 0;
 static u8 s_listSel   = 0;      /* 闹钟列表选中的下标 */
 static u8 s_alarmEdit = 0;      /* 闹钟页状态：0 = 列表态，1 = 编辑态（不压栈）*/
 
+static u8  s_gameState = 0;     /* 0 列表 / 1 游玩 / 2 结算 */
+static u8  s_gameSel   = 0;     /* 列表态光标 0..2 */
+static u8  s_gameIdx   = 0;     /* 正在玩哪个 0..2 */
+static u16 s_gameCnt   = 0;     /* 帧计数 / 结算倒计时 */
+static u8  s_planeShot = 0;     /* 飞机大战的自动发射计数 */
+
 /* ---- 「日期和时间」任务的状态（第 3 点）---- */
 static u8  s_dtActive = 0;      /* 1 = 正在这个任务里 */
 static u8  s_dtState  = 0;      /* 0 = 选选项，1 = 输入中 */
@@ -65,6 +76,11 @@ static u16 s_dtMD     = 0;      /* 已输入的月日 */
 static u8  s_dtH      = 0;      /* 已输入的时 */
 static u8  s_dtM      = 0;      /* 已输入的分 */
 static u8  s_dtCnt    = 0;      /* 已输入位数 */
+static u8  s_dtErr    = 0;
+
+/* ---- 「测距仪」任务的状态 ---- */
+static u16 s_rangeCm     = 0;       /* 最近一次测到的距离（厘米），0 = 没测到 */
+static u32 s_rangeNextMs = 0;       /* 下一次测量的时刻（节流到 150ms 一次） */      /* 上一次提交是否因非法被拒（给 I2C 显示提示）*/
 static u8 s_editIdx   = IDX_NONE;
 static u8 s_editField = 0;      /* 0=时 1=分 2=星期 3=开关 4=曲目 */
 static AlarmItem_t s_editBuf;
@@ -156,21 +172,33 @@ UIPageId_t Menu_Current(void)
 }
 
 /*========================================================================
- *      任务页的"进入 / 离开"钩子 —— 照 demo30 的做法统一挂在这里
+ *      任务页的"进入 / 离开"钩子 —— 全工程只有这一对入口
  *
- * 参考工程 demo30 的模型（用户 2026-09-19 要求照做）：
- *     进入任务 -> os_create_task(TASK_xxx)，任务体第一件事就是把该任务的外设
- *                 **完整配置一遍**（GPIO_config + PWM_config + ADC_config …）；
- *     离开任务 -> TASK_xxx_reset()：~关掉外设~（如 PWMB_CC6E_Disable）+ os_delete_task()。
- *   也就是 **"进入 = 完整初始化，离开 = 彻底收尾"**，不依赖上一次留下的状态。
+ * 这里做的是**外设的初始化与收尾**，不是"创建/销毁任务"。两者要分清：
  *
- * 本工程是页面栈模型（进一层 / 退一层 / 清栈三种走法），所以把这一对动作
- * 挂在这里、由 Menu_Push / Menu_Back / Menu_Home 三处统一调用 ——
+ *   · 本工程的任务是按**职责**分的（渲染/输入/逻辑/音效/采集，见 App_Public.h）。
+ *     每个任务要服务全部 7 个页面 —— 比如 TASK_RENDER 画所有页、TASK_INPUT 收所有键。
+ *     所以**只要系统在跑，这 5 个任务就必须一直在**，不能按页面创建/销毁。
+ *
+ *   · 参考工程 v3.1 是另一种分法：**一个外设一个任务**（TASK_LED / TASK_NTC / ...），
+ *     切业务时 os_delete_task(旧的) + os_create_task(新的)，只有当前业务在跑。
+ *     它的 App_Keys.c 里那两个 switch 就是干这个的。
+ *     那种分法适合"自检程序"（一次只验一个外设），不适合本工程这种"多个页面并存"的产品。
+ *
+ *   · 但 v3.1 有一条原则我们**照做了**，而且必须一直保持：
+ *        「进入 = 完整初始化，离开 = 彻底收尾，不依赖上一次留下的状态」
+ *     —— 它的做法是让任务体第一件事就 GPIO_config + PWM_config 全配一遍；
+ *        本工程没有"任务体重跑"这个时机，所以把同一件事挂在下面这对钩子上。
+ *
+ * 这一对动作由 Menu_Push / Menu_Back / Menu_Home 三处统一调用，
  * **不要散在各个页面的按键分支里**。云台就漏过一次：
- * 在云台页被闹钟打断 -> 响铃页 -> 停止后 Menu_Home 清栈，
- * 云台页被弹出去了，但它的外设没人关，舵机就一直挂在总线上。
+ *   在云台页被闹钟打断 -> 响铃页 -> 停止后 Menu_Home 清栈，
+ *   云台页被弹出去了，但它的外设没人关，舵机就一直挂在总线上。
+ *
+ * 【谁要在这里挂钩子】只有**独占型外设**才需要，即"打开就要占住引脚/定时器/PWM 通道"的：
+ *   云台（PWMA 通道 3）、测距仪（Timer4 + P2.4/P3.6）。
+ *   纯读传感器的页面（时钟、温湿度）不需要 —— 它们的外设在 sys_init 里配一次就够。
  *========================================================================*/
-
 /* 进入某个任务页时要做的事 */
 static void menu_task_enter(UIPageId_t pg)
 {
@@ -178,6 +206,15 @@ static void menu_task_enter(UIPageId_t pg)
     {
     case PAGE_SERVO:
         Servo_Init();
+        break;
+
+    case PAGE_RANGE:
+        /* 【测距仪】进页面：初始化超声波引脚 + 清掉上次的值 + 立刻测一次 */
+        SR04_Init();
+        SR04_ResetFilter();     /* 【2026-09-22】清掉中值滤波历史，
+                                 * 免得把上次退出前的残留值混进新的一段测量 */
+        s_rangeCm     = 0;
+        s_rangeNextMs = 0;
         break;
 
     default:
@@ -194,6 +231,14 @@ static void menu_task_leave(UIPageId_t pg)
         Servo_Off();
         break;
 
+    case PAGE_RANGE:
+        /* 【测距仪】离页面：把 TRIG 按低，不再发波（省电）。
+         * 【2026-09-22】新版本不用定时器、不用中断，所以这里没有"停表"的动作了
+         * —— 顺带把 Timer4 释放了出来（之前那一版拿它当计数器）。
+         * ECHO 是输入脚，不用动。 */
+        SR04_Stop();
+        break;
+
     case PAGE_HOME:
         /* 【第 3 点】离开"日期和时间"任务 = 退出它的子模式 */
         if (s_dtActive)
@@ -201,6 +246,15 @@ static void menu_task_leave(UIPageId_t pg)
             s_dtActive = 0;
             s_dtState  = 0;
         }
+        break;
+
+    case PAGE_GAME_HALL:
+        /* 【掌机模式】离开游戏页：把状态清干净。
+         * 这里可能是"正常返回"，也可能是**被闹钟打断弹走的**
+         * （Menu_Home() 会把整条栈逐层 leave），所以必须清，
+         * 否则下次进来会直接停在半局的游戏画面上。 */
+        s_gameState = 0;
+        s_gameCnt   = 0;
         break;
 
     default:
@@ -225,11 +279,10 @@ void Menu_Push(UIPageId_t page)
     }
 
     Display_SetPage(page);
-    Display_RequestFull();
+    Display_Refresh(1);
 
     /* 页面切换给一声提示音 —— 没有这一下，用户按了键只能靠"盯第 1 行字母有没有变"
      * 判断有没有生效（真机反馈原话："只切换最上面一行字母，没有听到蜂鸣器响"）。 */
-    Music_Beep(40);
 }
 
 void Menu_Back(void)
@@ -268,8 +321,7 @@ void Menu_Back(void)
     }
 
     Display_SetPage(Menu_Current());
-    Display_RequestFull();
-    Music_Beep(40);
+    Display_Refresh(1);
 }
 
 void Menu_Home(void)
@@ -296,7 +348,7 @@ void Menu_Home(void)
     }
 
     Display_SetPage(PAGE_HOME);
-    Display_RequestFull();
+    Display_Refresh(1);
 }
 
 /*========================================================================
@@ -342,11 +394,8 @@ u8 Menu_IndexOf(UIPageId_t p)
     {
     case PAGE_ALARM_EDIT: return 1;     /* 闹钟任务的子页 */
     case PAGE_RINGING:    return 0;     /* 响铃归到"时钟"任务 */
-    case PAGE_GAME_SNAKE:
-    case PAGE_GAME_BRICK:
-    case PAGE_GAME_PLANE:
-    case PAGE_GAME_DAILY:
-    case PAGE_GAME_OVER:  return 6;     /* 游戏任务的各子页 */
+    /* 【2026-09-22 清理】原来这里还有 5 个游戏子页 ID 的 case（都返回 6）。
+     * 游戏改成页内两状态后这些页面不再出现，见 App_Public.h 的说明。 */
     default: break;
     }
 
@@ -389,9 +438,7 @@ static void menu_enter(u8 idx)
         s_dtState  = 0;
         s_dtChoice = 0;
         s_dtCnt    = 0;
-        Display_RequestMain();
-        Display_RequestFull();
-        Music_Beep(20);
+        Display_Refresh(1);
         break;
 
     case PAGE_ALARM_LIST:
@@ -415,6 +462,14 @@ static void menu_enter(u8 idx)
         Menu_Push(pg);
         break;
 
+    case PAGE_GAME_HALL:
+        /* 【掌机模式】从任务清单进来总是先看"选游戏"那一屏 */
+        s_gameState = 0;
+        s_gameSel   = 0;
+        s_gameCnt   = 0;
+        Menu_Push(pg);
+        break;
+
     default:
         Menu_Push(pg);
         break;
@@ -426,7 +481,7 @@ static void menu_enter(u8 idx)
  *
  * 用户定的新键位：  K1 = 上移   K3 = 下移   K2 = 确认/进入   K4 = 返回
  * 本工程原来的键位：K1 = 进入   K3 = 上移   K2 = 返回        K4 = 下移
- * （K3/K4 在编辑页是"值−/值+"，同样属于"上/下"这一族）
+ * （K3/K4 在编辑页是"值-/值+"，同样属于"上/下"这一族）
  *
  * 两者正好是一个置换：新1=旧3、新2=旧1、新3=旧4、新4=旧2。
  * 所以不逐个 case 去改（那要动 5 个页面、十几个分支，改必漏一处），
@@ -459,21 +514,336 @@ static void touch(void)
     s_lastActMs = SysTick_Get();
 }
 
-void Menu_CheckIdle(void)
+/*========================================================================
+ *                  「测距仪」任务的周期测距
+ *
+ *  由 TASK_LOGIC 的 10ms 循环调用；内部**节流到 150ms 测一次**。
+ *  只在"当前页就是测距仪"时才测 —— 别的页面完全不碰超声波模块。
+ *
+ *  ※ 为什么不每 10ms 测一次：SR04_Measure() 是**阻塞**的
+ *     （上课代码那套软件延时数循环的必然代价）。
+ *     实测口径：最常见的 2~100cm 只要 0.2~7ms，占用 0.1~5%；
+ *     模块没插或超量程时，两个超时兜住，最坏约 40ms（见 HC_SR04.h）。
+ *     150ms 一次 -> 界面依然跟手；10ms 一次会把 TASK_LOGIC 占满，
+ *     按键和时钟节拍都会被拖。
+ *
+ *  测完调 Display_Refresh(0)：**只重画本页、不清屏** —— 测距值在变，
+ *  清屏会让屏幕每秒闪好几下（见 Display_Refresh 的参数约定）。
+ *========================================================================*/
+void Range_Poll(void)
 {
-    UIPageId_t p;
-
-    p = Menu_Current();
-
-    /* 响铃页、编辑页不参与空闲返回 —— 正在操作的事不能被弹走 */
-    if (p == PAGE_RINGING || p == PAGE_ALARM_EDIT || p == PAGE_POMODORO)
+    if (Menu_Current() != PAGE_RANGE)
     {
         return;
     }
 
-    if (p == PAGE_HOME)
+    if (s_rangeNextMs != 0 && SysTick_Elapsed(s_rangeNextMs) < 150U)
     {
         return;
+    }
+
+    s_rangeNextMs = SysTick_Get();
+    s_rangeCm     = SR04_Measure();
+
+    Display_Refresh(0);
+}
+
+/* 原始计数（cnt），标定与判故障用。
+ * 【2026-09-22】新版本每次测量都会更新它（不再只是"最后一次成功"）：
+ *   · 正常测量 -> 是本次的 cnt，例如 20cm 约 118
+ *   · 等起跳超时 -> 500   （模块没插 / 接线松 / TRIG 没输出）
+ *   · 高电平超时 -> 3000  （超量程或一直高）
+ * 所以屏上的 RAW 一眼就能看出卡在哪一步。 */
+u16 Menu_RangeRaw(void)
+{
+    return SR04_LastRaw();
+}
+
+u16 Menu_RangeCm(void)
+{
+    return s_rangeCm;
+}
+
+/*========================================================================
+ *                        掌机模式（"7 游戏"任务）
+ *
+ *  用户 2026-09-22 的设定（原文）：
+ *    "『7 游戏』任务点进去之后可以显示想要游玩的游戏，点击要游玩的游戏后，
+ *     SPI 屏幕直接显示当前正在游玩的游戏，矩阵键盘的第三行第二个、
+ *     第四行第一、二、三个，分别用来控制上左下右，I2C 屏幕此时直接关闭，
+ *     独立按键全部一起按下才能强制退出游戏。"
+ *    "游戏大厅不要了，把『选游戏+游玩』做成『7 游戏』页内的两个状态
+ *     （和闹钟/番茄钟同款）。"
+ *
+ *  => **不做单独的"大厅"页面**：PAGE_GAME_HALL 就是"7 游戏"任务页本身，
+ *     页内三个状态（不额外压栈，和闹钟/番茄钟一致）：
+ *        s_gameState = 0  列表态：SPI 列 3 个游戏，K1/K3 选、K2 开始、K4 返回
+ *        s_gameState = 1  游玩态：SPI 由游戏自己画，独立按键全部屏蔽
+ *        s_gameState = 2  结算态：显示 GameOver 1.5 秒后自动回列表
+ *
+ *  三个游戏都来自参考工程《23_基于stc8的多功能时钟》的 User/ 目录
+ *  （game.c / snake.c / planegame.c），移植时只做了机械适配：
+ *    · 显示层从副屏(oled.h)换到主屏(SPI_OLED_*)；
+ *    · Delay_ms -> delay_ms；
+ *    · snake.c 的 malloc/free -> 静态节点池；
+ *    · game.c 的 Game_* 改名 Brick_*（避免与 App_Game.c 撞名）。
+ *  游戏逻辑本身一行没动。
+ *========================================================================*/
+
+/*------------------------------------------------------------------------
+ *  矩阵键盘方向键
+ *
+ *  按键编号 = row * 4 + col（见 Driver/MatrixKey.h；4x4 键盘，row/col 都是 0..3）。
+ *  用户指定的是**键盘上的位置**：
+ *     第三行第二个  = row2, col1  =>  2*4+1 = 9    （上）
+ *     第四行第一个  = row3, col0  =>  3*4+0 = 12   （左）
+ *     第四行第二个  = row3, col1  =>  3*4+1 = 13   （下）
+ *     第四行第三个  = row3, col2  =>  3*4+2 = 14   （右）
+ *------------------------------------------------------------------------*/
+#define GAME_KEY_UP     9U
+#define GAME_KEY_LEFT   12U
+#define GAME_KEY_DOWN   13U
+#define GAME_KEY_RIGHT  14U
+
+/* 【2026-09-22 用户要求】强制退出键：**矩阵键盘第一行第四个**。
+ *     第一行第四个 = row0, col3  =>  0*4+3 = 3
+ * 原来是"4 个独立按键同时按下"，用户改成这一个键（更好按、也不会误触）。
+ * 游玩态下独立按键仍然一律不响应（除了这一下退出）。 */
+#define GAME_KEY_EXIT   3U
+
+/* 游戏个数 GAME_COUNT 定义在 App_Menu.h（显示层也要用）*/
+
+/* 每 3 拍推一帧。TASK_LOGIC 是 10ms 一拍，所以 = 30ms/帧（约 33 帧/秒）。
+ * 刷屏（软件 SPI 写 1024 字节）约 8.5ms，30ms 一拍留了一倍余量。 */
+#define GAME_FRAME_DIV  3U
+
+/* 【2026-09-22 二次修正】贪吃蛇用单独的节拍。
+ *
+ *  真机反馈过两次"贪吃蛇无法移动"。第一次我判断成"太快"（30ms/步、
+ *  出生点在屏幕正中，0.24 秒就撞右墙），改成 150ms 并挪了出生点。
+ *  但**那只是缓解，不是根因** —— 真正的根因是静态节点池没初始化
+ *  （s_snakeFree 一直是 NULL，见 App_GmSnake.c 的 Snake_Init），
+ *  蛇根本没被创建出来，所以怎么改节拍都不动。
+ *
+ *  现在根因已修，节拍按"手感"重新定：
+ *     参考工程原版 = os_wait2(K_TMO,10) = 50ms/步（从屏幕正中出发，0.4 秒，偏快）
+ *     上一版       = 150ms/步（从 x=16 出发要 2.1 秒，偏慢，看着像卡住）
+ *     现在         = 10 拍 = 100ms/步（从 x=16 到墙约 1.4 秒，适中）
+ *  打砖块/飞机是"每步移动 1~4 像素"，30ms 一步本来就合适，保持原速。 */
+#define GAME_STEP_SNAKE 10U
+
+static u8 game_step_div(void)
+{
+    return (s_gameIdx == 0U) ? GAME_STEP_SNAKE : (u8)GAME_FRAME_DIV;
+}
+
+/* 结算画面停留 150 拍 = 1.5 秒，然后自动回列表 */
+#define GAME_OVER_DIV   150U
+
+/* 【掌机模式的状态变量声明在文件顶部（和 s_alarmEdit 放一起）——
+ * 因为 menu_enter() / menu_task_leave() 在文件很靠前的位置就要用它们，
+ * 声明放在这里会报 error C202: undefined identifier。 */
+
+/* 启动选中的游戏。三个游戏的 Init 都会自己把状态置成"游玩中"并清屏。 */
+static void game_start(u8 idx)
+{
+    switch (idx)
+    {
+    case 0:  Snake_Init();      break;
+    case 1:  Brick_Init();      break;
+    default: PlaneGame_Init();  break;
+    }
+}
+
+/* 推一帧：Update + Draw（Draw 内部会自己调 SPI_OLED_Refresh） */
+static void game_frame(void)
+{
+    switch (s_gameIdx)
+    {
+    case 0:
+        Snake_Update();
+        Snake_Draw();
+        break;
+
+    case 1:
+        Brick_Update();
+        Brick_Draw();
+        break;
+
+    default:
+        PlaneGame_Update();
+        /* 【补·必须做】飞机大战原本靠 PLANE_KEY_SHOOT 按键发射子弹，
+         * 而用户只指定了 4 个方向键、没有射击键。
+         * 所以由外壳**定期替它发射**（每 3 帧一发 = 90ms），
+         * 这样不改游戏源码、也不必让某个方向键兼职。
+         * PlaneGame_Shoot() 内部自己会判断状态和空闲弹位，直接调是安全的。 */
+        s_planeShot++;
+        if (s_planeShot >= 3U)
+        {
+            s_planeShot = 0;
+            PlaneGame_Shoot();
+        }
+        PlaneGame_Draw();
+        break;
+    }
+}
+
+/* 强制退出：回"选游戏"列表。清掉局内状态，否则下次进来会停在半局画面上。 */
+static void game_exit(void)
+{
+    s_gameState = 0;
+    s_gameCnt   = 0;
+    Display_Refresh(1);
+}
+
+/* 游戏是否已结束（三个游戏各有一个 state 变量） */
+static u8 game_is_over(void)
+{
+    switch (s_gameIdx)
+    {
+    case 0:  return (u8)(snakeGameState == SNAKE_STATE_GAME_OVER);
+    case 1:  return (u8)(brickState     == GAME_OVER);
+    default: return (u8)(planeGameState == PLANE_STATE_GAME_OVER);
+    }
+}
+
+/* 画结算画面（三个游戏各有自己的 ShowGameOver，内部会刷新屏幕） */
+static void game_show_over(void)
+{
+    switch (s_gameIdx)
+    {
+    case 0:  Snake_ShowGameOver();      break;
+    case 1:  Brick_ShowGameOver();      break;
+    default: PlaneGame_ShowGameOver();  break;
+    }
+}
+
+/* 方向键 -> 游戏输入。
+ * 注意打砖块：Brick_MovePaddle() 的参数是**方向增量**（x += dir*3），
+ * 而且挡板只左右移动，所以只映射左/右，上/下不理会。 */
+static void game_input(u8 p)
+{
+    switch (s_gameIdx)
+    {
+    case 0:     /* 贪吃蛇：四方向（内部会挡 180 度掉头） */
+        if      (p == GAME_KEY_UP)    { Snake_HandleInput(SNAKE_DIR_UP);    }
+        else if (p == GAME_KEY_DOWN)  { Snake_HandleInput(SNAKE_DIR_DOWN);  }
+        else if (p == GAME_KEY_LEFT)  { Snake_HandleInput(SNAKE_DIR_LEFT);  }
+        else if (p == GAME_KEY_RIGHT) { Snake_HandleInput(SNAKE_DIR_RIGHT); }
+        break;
+
+    case 1:     /* 打砖块：只左右 */
+        if      (p == GAME_KEY_LEFT)  { Brick_MovePaddle(-1); }
+        else if (p == GAME_KEY_RIGHT) { Brick_MovePaddle(1);  }
+        break;
+
+    default:    /* 飞机大战：四方向（发射由 game_frame 定期做） */
+        if      (p == GAME_KEY_UP)    { PlaneGame_HandleKey(PLANE_KEY_UP);    }
+        else if (p == GAME_KEY_DOWN)  { PlaneGame_HandleKey(PLANE_KEY_DOWN);  }
+        else if (p == GAME_KEY_LEFT)  { PlaneGame_HandleKey(PLANE_KEY_LEFT);  }
+        else if (p == GAME_KEY_RIGHT) { PlaneGame_HandleKey(PLANE_KEY_RIGHT); }
+        break;
+    }
+}
+
+u8 Menu_GameIsPlaying(void)
+{
+    return (u8)(s_gameState != 0);
+}
+
+u8 Menu_GameSel(void)
+{
+    return s_gameSel;
+}
+
+/*------------------------------------------------------------------------
+ *  掌机模式的周期动作 —— 由 TASK_LOGIC 每 10ms 调一次
+ *
+ *  三件事：
+ *    1) **4 个独立按键同时按下 = 强制退出**（用户在游玩态唯一有效的按键操作）
+ *    2) 按节拍推一帧游戏
+ *    3) 结束检测 + 结算倒计时
+ *------------------------------------------------------------------------*/
+void Game_Poll(void)
+{
+    if (Menu_Current() != PAGE_GAME_HALL)
+    {
+        return;                     /* 不在游戏页 */
+    }
+    if (s_gameState == 0U)
+    {
+        return;                     /* 列表态：等按键，不需要周期动作 */
+    }
+
+    /* 【2026-09-22 用户要求】退出改成"矩阵键盘第一行第四个键"，
+     * 在 Menu_OnEvent 的游戏分支里处理（见 GAME_KEY_EXIT），
+     * 这里不再检测"4 个独立按键同时按下"。 */
+
+    /* ---- 2) 结算态：停一会儿再回列表 ---- */
+    if (s_gameState == 2U)
+    {
+        s_gameCnt++;
+        if (s_gameCnt >= GAME_OVER_DIV)
+        {
+            s_gameState = 0;
+            s_gameCnt   = 0;
+            Display_Refresh(1);
+        }
+        return;
+    }
+
+    /* ---- 3) 游玩态：先看有没有结束 ---- */
+    if (game_is_over())
+    {
+        game_show_over();
+        s_gameState = 2U;           /* 进结算态 */
+        s_gameCnt   = 0;
+        return;
+    }
+
+    /* ---- 4) 按节拍推一帧（贪吃蛇节拍更慢，见 GAME_STEP_SNAKE）---- */
+    s_gameCnt++;
+    if (s_gameCnt < game_step_div())
+    {
+        return;
+    }
+    s_gameCnt = 0;
+    game_frame();
+}
+void Menu_CheckIdle(void)
+{
+    /* 【2026-09-22 用户要求】只有"第二级菜单"（任务清单）才触发空闲返回。
+     *
+     * 用户原话："只有在第二级菜单时，才会触发长时间不操作返回主界面这个功能。"
+     *
+     * 本工程的层级（见 Menu_OnEvent 里那段模型说明）：
+     *   第 0 级 大字时钟        : Menu_Current()==PAGE_HOME && s_menuOpen==0
+     *   第 1 级 任务清单         : Menu_Current()==PAGE_HOME && s_menuOpen==1
+     *                            （这就是用户口语里的"第二级菜单"）
+     *   第 2 级 进了某个任务页   : Menu_Current() != PAGE_HOME
+     *
+     * 原来的写法是"除少数例外、其它页面都参与"，
+     * 于是进了闹钟/设置/测距仪/云台/游戏页，30 秒不动就被弹回主界面。
+     * 现在反过来：**只认任务清单这一层**；进了任务就不再自动返回
+     * （要回主界面自己按 KEY4）。
+     *
+     * ※ 为什么不能只用 Menu_IsOpen() 判断：
+     *   进入任务页之后 s_menuOpen **已经是 0** —— menu_enter() 第一句就清它，
+     *   所以单看这个标志会把"任务页"错当成"已经不在第二级"而放行。
+     *   两个条件必须一起看。
+     * ※ "日期和时间"任务不压栈（走 s_dtActive 子模式），进来时 s_menuOpen
+     *   同样被清 0，所以它也被自动排除，不必单独判 s_dtActive。
+     * ※ 响铃页/闹钟编辑页/番茄钟也一并被排除了 —— 它们的 Menu_Current()
+     *   都不是 PAGE_HOME，本来就到不了下面那句 Menu_Home()。
+     */
+    if (Menu_Current() != PAGE_HOME)
+    {
+        return;                     /* 已经在某个任务里 -> 不打扰 */
+    }
+
+    if (!Menu_IsOpen())
+    {
+        return;                     /* 还停在大字时钟 -> 无处可返 */
     }
 
     if (SysTick_Elapsed(s_lastActMs) >= (u32)(IDLE_BACK_HOME_SEC * 1000U))
@@ -508,7 +878,6 @@ static void dt_commit(void)
             g_clock.day   = d;
             Clock_Set(&g_clock);        /* 内部会按年月日重算周几 */
             ok = 1;
-            printf("[DT] date set %04u-%02u-%02u\r\n", (unsigned)y, (unsigned)mo, (unsigned)d);
         }
     }
     else
@@ -521,35 +890,49 @@ static void dt_commit(void)
             Clock_Set(&g_clock);
             Alarm_ApplyHardware();
             ok = 1;
-            printf("[DT] time set %02u:%02u\r\n", (unsigned)s_dtH, (unsigned)s_dtM);
         }
     }
 
+    s_dtErr = (u8)(ok ? 0 : 1);
+
     if (ok)
     {
-        Music_Beep(80);
         s_dtState = 0;              /* 成功 -> 回选项选择 */
     }
     else
     {
-        /* 非法：长音提示，**留在输入态**让用户接着删掉重输 */
-        Music_Beep(200);
-        printf("[DT] invalid, ignored\r\n");
+        /* 非法：长音提示，**留在输入态**让用户接着删掉重输。
+         * 此时 s_dtCnt 仍是满位，dt_input 会拒绝继续输入（见那里的说明）。 */
     }
 
-    Display_RequestMain();
-    Display_RequestFull();
+    Display_Refresh(1);
 }
 
 /* 矩阵键盘输入一位 */
 static void dt_input(u8 digit)
 {
+    u8 maxCnt = (u8)((s_dtChoice == 0) ? 8 : 4);
+
+    /* 【2026-09-21 修用户报的"输入错误的时间这个数字就能一直输入、
+     *   DATE 地方的值也不断增加、I2C 最下面一行已经显示 30/8"】
+     *
+     * 根因：原来只在"刚好数到满位"那一刻才去提交一次校验；
+     * 校验没过就留在输入态，而 s_dtCnt 已经等于满位了 —— 再按数字
+     * 就继续累加（9、10、…30），s_dtMD 也跟着 *10 一路涨。
+     *
+     * 现在**满位就锁住**：拒绝继续输入并长鸣提示，用户只能按 K4 删一位再改。 */
+    if (s_dtCnt >= maxCnt)
+    {
+        return;
+    }
+
+    s_dtErr = 0;                    /* 重新开始输就把"非法"提示清掉 */
+
     if (s_dtChoice == 0)            /* 8 位：前 4 位年，后 4 位月日 */
     {
         if (s_dtCnt < 4) { s_dtY  = (u16)(s_dtY  * 10U + digit); }
         else             { s_dtMD = (u16)(s_dtMD * 10U + digit); }
         s_dtCnt++;
-        Music_Beep(15);
         if (s_dtCnt >= 8) { dt_commit(); return; }
     }
     else                            /* 4 位：前 2 位时，后 2 位分 */
@@ -557,11 +940,10 @@ static void dt_input(u8 digit)
         if (s_dtCnt < 2) { s_dtH = (u8)(s_dtH * 10U + digit); }
         else             { s_dtM = (u8)(s_dtM * 10U + digit); }
         s_dtCnt++;
-        Music_Beep(15);
         if (s_dtCnt >= 4) { dt_commit(); return; }
     }
 
-    Display_RequestFull();
+    Display_Refresh(0);
 }
 
 /* KEY4：删掉最后一位。删到 0 位就取消修改、退回上一级（选项选择态）。
@@ -571,13 +953,12 @@ static void dt_delete(void)
     if (s_dtCnt == 0)
     {
         s_dtState = 0;              /* 已经删完 -> 退回选项选择 */
-        Music_Beep(20);
-        Display_RequestMain();
-        Display_RequestFull();
+        Display_Refresh(1);
         return;
     }
 
     s_dtCnt--;
+    s_dtErr = 0;                    /* 删了一位就不算"非法"了 */
 
     if (s_dtChoice == 0)
     {
@@ -590,8 +971,7 @@ static void dt_delete(void)
         else             { s_dtM = (u8)(s_dtM / 10U); }
     }
 
-    Music_Beep(15);
-    Display_RequestFull();
+    Display_Refresh(0);
 }
 
 /* 「日期和时间」任务的全部按键（**新键位编号**：K1=上移 K3=下移 K2=确认 K4=返回）*/
@@ -615,18 +995,14 @@ static void date_time_key(const Event_t *evt)
     if (evt->type == EVT_KEY1 || evt->type == EVT_KEY3)
     {
         s_dtChoice = (u8)(!s_dtChoice);     /* 两个选项来回切 */
-        Music_Beep(15);
-        Display_RequestMain();
-        Display_RequestFull();
+        Display_Refresh(0);
     }
     else if (evt->type == EVT_KEY2)
     {
         /* 确认进入输入：清零各值和位数 */
         s_dtState = 1;
         s_dtY = 0; s_dtMD = 0; s_dtH = 0; s_dtM = 0; s_dtCnt = 0;
-        Music_Beep(40);
-        Display_RequestMain();
-        Display_RequestFull();
+        Display_Refresh(1);
     }
     else if (evt->type == EVT_KEY4)
     {
@@ -634,9 +1010,7 @@ static void date_time_key(const Event_t *evt)
         s_dtActive = 0;
         s_menuOpen = 1;
         s_menuCursor = Menu_IndexOf(PAGE_HOME);
-        Display_RequestMain();
-        Display_RequestFull();
-        Music_Beep(20);
+        Display_Refresh(1);
     }
 }
 
@@ -648,6 +1022,7 @@ u16 Menu_DateMD(void)       { return s_dtMD; }
 u8  Menu_DateH(void)        { return s_dtH; }
 u8  Menu_DateM(void)        { return s_dtM; }
 u8  Menu_DateCnt(void)      { return s_dtCnt; }
+u8  Menu_DateErr(void)      { return s_dtErr; }
 
 /*========================================================================
  *                  设置页：调一项的值、状态查询（第 7 点）
@@ -659,6 +1034,12 @@ static void settings_step(u8 up)
     case 0:     /* 音量 0..100，步进 1% */
         if (up) { if (g_settings.volume  < VOLUME_MAX) { g_settings.volume++;  } }
         else    { if (g_settings.volume  > 0)          { g_settings.volume--;  } }
+
+        /* 【2026-09-21 用户要求】按键反馈全部取消，**只有这四项保留**：
+         *   音量 / 震动 / 曲目 / 提醒
+         * 因为这四项的反馈是"有信息量"的 —— 改音量要听到音量、
+         * 改震动要感觉到强度、改曲目要听到曲子、改提醒要知道是哪一种。 */
+        Music_Beep(100);
         break;
 
     case 1:     /* 曲目：换一首并试听 */
@@ -667,8 +1048,18 @@ static void settings_step(u8 up)
         Music_Play((u8)(g_settings.song + 1), g_settings.volume);
         break;
 
-    case 2:     /* 提醒方式 */
+    case 2:     /* 提醒方式（Buzzer = 放曲子 / Motor = 只震动）*/
         g_settings.alert_mode = (g_settings.alert_mode == ALERT_RING) ? ALERT_VIBRATE : ALERT_RING;
+
+        /* 用"当前选中的这一种"给反馈，用户才知道现在到底选的是哪种 */
+        if (g_settings.alert_mode == ALERT_RING)
+        {
+            Music_Beep(150);
+        }
+        else
+        {
+            Motor_Vibrate(150, g_settings.vibrate);
+        }
         break;
 
     case 3:     /* 主屏开关 */
@@ -688,10 +1079,15 @@ static void settings_step(u8 up)
     default:    /* 震动强度 0..100，步进 1% */
         if (up) { if (g_settings.vibrate < 100) { g_settings.vibrate++; } }
         else    { if (g_settings.vibrate > 0)   { g_settings.vibrate--; } }
+
+        /* 【2026-09-21 用户要求】"改震动的时候，自动震动"
+         * 边调边震一下，直接感受到当前强度，不用退出去再试。
+         * Motor_Vibrate 是非阻塞的（到点在 Motor_Tick 里收尾）；
+         * 强度为 0 时会兜底到 10%，否则用户按了完全没有感觉。 */
+        Motor_Vibrate(80, g_settings.vibrate);
         break;
     }
 
-    Music_Beep(15);
 }
 
 u8 Menu_SetIsEditing(void) { return s_setEdit; }
@@ -707,36 +1103,38 @@ static void alarm_list_key(const Event_t *evt)
     {
     case EVT_KEY3:                  /* 新 KEY1 = 上移 */
         if (s_listSel > 0) { s_listSel--; } else { s_listSel = (u8)(ALARM_MAX - 1); }
-        Display_RequestFull();
+        Display_Refresh(0);
         break;
 
     case EVT_KEY4:                  /* 新 KEY3 = 下移 */
         s_listSel++;
         if (s_listSel >= ALARM_MAX) { s_listSel = 0; }
-        Display_RequestFull();
+        Display_Refresh(0);
         break;
 
-    case EVT_KEY1:                  /* 新 KEY2 = 进入编辑（只切状态，不压栈）*/
+    /* 【2026-09-21 用户要求】「KEY2 键位用来确定开启或者关闭，
+     *   最开始都关闭，KEY2 按下开启当前选择闹钟，KEY2 再次按下关闭当前闹钟」
+     * -> 短按 KEY2 = 开/关当前这组闹钟。 */
+    case EVT_KEY1:                  /* 新 KEY2 短按 = 开/关当前闹钟 */
+        Alarm_Toggle(s_listSel);
+        Display_Refresh(0);
+        break;
+
+    /* 编辑那一层改由**长按 KEY2** 进入（用户 2026-09-21 选定）：
+     * 短按已经被"开/关"占用了，长按是唯一不额外占键的入口。 */
+    case EVT_KEY1_LONG:             /* 新 KEY2 长按 = 进入编辑（不压栈）*/
         s_editIdx   = s_listSel;
         s_editBuf   = g_alarms[s_listSel];
         s_editField = 0;
         s_alarmEdit = 1;
-        Music_Beep(20);
-        Display_RequestFull();
-        break;
-
-    case EVT_KEY1_LONG:             /* 新 KEY2 长按 */
-    case EVT_KEY4_LONG:             /* 新 KEY3 长按 —— 开关这组闹钟 */
-        Alarm_Toggle(s_listSel);
-        Music_Beep(60);
-        Display_RequestFull();
+        Display_Refresh(0);
         break;
 
     case EVT_MATRIX:                /* 矩阵键盘直接跳到对应组 */
         if (evt->param < ALARM_MAX)
         {
             s_listSel = evt->param;
-            Display_RequestFull();
+            Display_Refresh(0);
         }
         break;
 
@@ -759,7 +1157,7 @@ static void alarm_edit_key(const Event_t *evt)
             Menu_Back();
             return;
         }
-        Display_RequestFull();
+        Display_Refresh(0);
         break;
 
     case EVT_KEY3:                  /* 新 KEY1 = 上移 = 值减 */
@@ -772,7 +1170,7 @@ static void alarm_edit_key(const Event_t *evt)
         case 4: s_editBuf.song   = (u8)((s_editBuf.song + SONG_COUNT) % (SONG_COUNT + 1)); break;
         default: break;
         }
-        Display_RequestFull();
+        Display_Refresh(0);
         break;
 
     case EVT_KEY4:                  /* 新 KEY3 = 下移 = 值加 */
@@ -785,7 +1183,7 @@ static void alarm_edit_key(const Event_t *evt)
         case 4: s_editBuf.song   = (u8)((s_editBuf.song + 1) % (SONG_COUNT + 1)); break;
         default: break;
         }
-        Display_RequestFull();
+        Display_Refresh(0);
         break;
 
     case EVT_MATRIX:                /* 矩阵键盘直接输数字：在"时/分"字段上按 0-9 会填进去 */
@@ -801,7 +1199,7 @@ static void alarm_edit_key(const Event_t *evt)
                 s_editBuf.minute = (u8)((s_editBuf.minute % 10) * 10 + evt->param);
                 if (s_editBuf.minute > 59) { s_editBuf.minute = evt->param; }
             }
-            Display_RequestFull();
+            Display_Refresh(0);
         }
         break;
 
@@ -844,11 +1242,8 @@ void Menu_OnEvent(const Event_t *evt)
         s_dbgLed = (u8)(!s_dbgLed);
         Led_SetSingle(1, s_dbgLed);
     }
-    if (evt->type != EVT_POT)       /* 旋钮太频繁，不打日志 */
-    {
-        printf("[EVT] type=%d param=%d page=%d\r\n",
-               (int)evt->type, (int)evt->param, (int)Menu_Current());
-    }
+    /* 【2026-09-22】原来这里还有一条串口回声（打印事件类型/参数/当前页）。
+     * 工程收尾时全工程的调试 printf 已统一删除，这里只保留上面那颗灯。 */
 #endif
 
     /* ---------- 全局事件：任何页面都生效 ---------- */
@@ -899,14 +1294,12 @@ void Menu_OnEvent(const Event_t *evt)
         if (s_setSel == 0)
         {
             g_settings.volume  = evt->param;    /* 0..100，1% 步进 */
-            Display_RequestMain();
-            Display_RequestFull();
+            Display_Refresh(1);
         }
         else if (s_setSel == 6)
         {
             g_settings.vibrate = evt->param;
-            Display_RequestMain();
-            Display_RequestFull();
+            Display_Refresh(1);
         }
         return;
     }
@@ -940,9 +1333,7 @@ void Menu_OnEvent(const Event_t *evt)
             {
                 s_menuCursor = Menu_IndexOf(PAGE_HOME);
                 s_menuOpen   = 1;
-                Display_RequestMain();      /* 主屏：把菜单画出来 */
-                Display_RequestFull();      /* 副屏：从"时钟内容"换成"任务图标"，要清屏 */
-                Music_Beep(20);
+                Display_Refresh(1);      /* 副屏：从"时钟内容"换成"任务图标"，要清屏 */
             }
             return;
         }
@@ -959,8 +1350,7 @@ void Menu_OnEvent(const Event_t *evt)
             {
                 s_menuCursor--;
             }
-            Display_RequestMain();      /* 主屏：菜单光标 */
-            Display_RequestIcon();      /* 副屏：换成这个任务的图标 */
+            Display_Refresh(0);
             break;
 
         case EVT_KEY3:                      /* 光标下移（到底回绕） */
@@ -972,8 +1362,7 @@ void Menu_OnEvent(const Event_t *evt)
             {
                 s_menuCursor++;
             }
-            Display_RequestMain();      /* 主屏：菜单光标 */
-            Display_RequestIcon();      /* 副屏：换成这个任务的图标 */
+            Display_Refresh(0);
             break;
 
         case EVT_KEY2:                      /* 进入该任务 */
@@ -982,9 +1371,7 @@ void Menu_OnEvent(const Event_t *evt)
 
         case EVT_KEY4:                      /* 回第 0 级：大字时钟 */
             s_menuOpen = 0;
-            Display_RequestMain();          /* 主屏：回到大字时钟 */
-            Display_RequestFull();          /* 副屏：从"任务图标"换回"时钟内容"，要清屏 */
-            Music_Beep(20);
+            Display_Refresh(1);          /* 副屏：从"任务图标"换回"时钟内容"，要清屏 */
             break;
 
         default:
@@ -1028,17 +1415,17 @@ void Menu_OnEvent(const Event_t *evt)
         {
         case EVT_KEY3:                  /* 新 KEY1 = 上移 = 角度减小 */
             Servo_SetAngle((a >= SERVO_KEY_STEP) ? (u8)(a - SERVO_KEY_STEP) : 0);
-            Display_RequestGauge();
+            Display_Refresh(0);
             break;
 
         case EVT_KEY4:                  /* 新 KEY3 = 下移 = 角度增大 */
             Servo_SetAngle((a <= (u8)(180 - SERVO_KEY_STEP)) ? (u8)(a + SERVO_KEY_STEP) : 180);
-            Display_RequestGauge();
+            Display_Refresh(0);
             break;
 
         case EVT_KEY1:                  /* 新 KEY2 = 确认 = 回中位 90° */
             Servo_SetAngle(90);
-            Display_RequestGauge();
+            Display_Refresh(0);
             break;
 
         case EVT_KEY2:                  /* 新 KEY4 = 返回上一级（会顺手 Servo_Off） */
@@ -1055,6 +1442,13 @@ void Menu_OnEvent(const Event_t *evt)
      * 测距仪（超声波）—— 2026-09-19 新增
      * 目前只接上"返回上一级"，S4 再填测距逻辑。
      *============================================================*/
+    /*============================================================
+     * 测距仪（超声波）
+     *
+     * 测距本身是**周期自动做**的（Range_Poll 每 150ms 一次），
+     * 所以这个页面不需要任何按键来触发测量 —— 只有"返回"。
+     * 版面：副屏显示数值 + 进度条；主屏显示大字距离。
+     *============================================================*/
     case PAGE_RANGE:
         switch (evt->type)
         {
@@ -1068,13 +1462,84 @@ void Menu_OnEvent(const Event_t *evt)
         break;
 
     /*============================================================
+     * 掌机模式（"7 游戏"）—— 一个页面、两个状态
+     *
+     * 游玩态的规则完全按用户要求：
+     *   · 只认矩阵键盘的方向键；**独立按键全部屏蔽**
+     *     （退出只认"4 键同时按下"，在 Game_Poll 里检测）
+     *   · I2C 副屏关掉（由 sub_redraw() 的 hasContent 判定）
+     *============================================================*/
+    case PAGE_GAME_HALL:
+    {
+        /* ---- 游玩/结算态：独立按键一律不响应；
+         *      矩阵键盘里只认方向键 + 强制退出键 ---- */
+        if (s_gameState != 0U)
+        {
+            if (evt->type == EVT_MATRIX)
+            {
+                if (evt->param == GAME_KEY_EXIT)
+                {
+                    game_exit();        /* 第一行第四个 = 强制退出 */
+                }
+                else
+                {
+                    game_input(evt->param);
+                }
+            }
+            break;
+        }
+
+        /* ---- 列表态 ---- */
+        switch (evt->type)
+        {
+        case EVT_KEY3:                  /* 新 K1 = 上移 */
+            if (s_gameSel == 0U)
+            {
+                s_gameSel = (u8)(GAME_COUNT - 1U);
+            }
+            else
+            {
+                s_gameSel--;
+            }
+            Display_Refresh(0);
+            break;
+
+        case EVT_KEY4:                  /* 新 K3 = 下移 */
+            s_gameSel++;
+            if (s_gameSel >= GAME_COUNT)
+            {
+                s_gameSel = 0;
+            }
+            Display_Refresh(0);
+            break;
+
+        case EVT_KEY1:                  /* 新 K2 = 开始玩这个游戏 */
+            s_gameIdx   = s_gameSel;
+            s_gameState = 1U;
+            s_gameCnt   = 0;
+            s_planeShot = 0;
+            game_start(s_gameIdx);   /* 内含清屏，游戏会自己画第一帧 */
+            Display_Refresh(1);      /* 让副屏按新状态关掉 */
+            break;
+
+        case EVT_KEY2:                  /* 新 K4 = 回任务清单 */
+            Menu_Back();
+            break;
+
+        default:
+            break;
+        }
+        break;
+    }
+
+    /*============================================================
      * 闹钟 —— 一个页面、两个状态【任务清单第 4 点】
      *
      * 原来"列表"和"编辑"是两个页面并且压栈，层级是
      *   任务清单 → 闹钟列表 → 闹钟编辑
      * 从编辑回任务清单要按两次 KEY4（用户明确抱怨过）。
      * 现在它们只是同一页的 s_alarmEdit 两个状态，**不压栈**：
-     *   任务清单 → 闹钟页（列表态 ⇄ 编辑态）
+     *   任务清单 → 闹钟页（列表态 <-> 编辑态）
      * KEY4 在**任何状态**都一次回任务清单 —— 这一页的上一级就是任务清单。
      *============================================================*/
     case PAGE_ALARM_LIST:
@@ -1125,13 +1590,13 @@ void Menu_OnEvent(const Event_t *evt)
             if (evt->type == EVT_KEY3)
             {
                 if (s_pomoSel > 0) { s_pomoSel--; } else { s_pomoSel = 2; }
-                Display_RequestFull();
+                Display_Refresh(0);
             }
             else if (evt->type == EVT_KEY4)
             {
                 s_pomoSel++;
                 if (s_pomoSel > 2) { s_pomoSel = 0; }
-                Display_RequestFull();
+                Display_Refresh(0);
             }
             else if (evt->type == EVT_KEY1)
             {
@@ -1144,8 +1609,7 @@ void Menu_OnEvent(const Event_t *evt)
                 {
                     s_pomoEdit = 1;     /* 前两项：进编辑态 */
                 }
-                Music_Beep(20);
-                Display_RequestFull();
+                Display_Refresh(0);
             }
             break;
         }
@@ -1154,7 +1618,7 @@ void Menu_OnEvent(const Event_t *evt)
         if (evt->type == EVT_KEY1)          /* 新 KEY2 = 确认回列表 */
         {
             s_pomoEdit = 0;
-            Display_RequestFull();
+            Display_Refresh(0);
         }
         else if (evt->type == EVT_KEY3)     /* 新 KEY1 = 值减 / 切换 */
         {
@@ -1171,7 +1635,7 @@ void Menu_OnEvent(const Event_t *evt)
             {
                 s_pomoRunning = (u8)(!s_pomoRunning);
             }
-            Display_RequestFull();
+            Display_Refresh(0);
         }
         else if (evt->type == EVT_KEY4)     /* 新 KEY3 = 值加 / 切换 */
         {
@@ -1188,7 +1652,7 @@ void Menu_OnEvent(const Event_t *evt)
             {
                 s_pomoRunning = (u8)(!s_pomoRunning);
             }
-            Display_RequestFull();
+            Display_Refresh(0);
         }
         break;
     }
@@ -1198,7 +1662,7 @@ void Menu_OnEvent(const Event_t *evt)
      * 设置 —— 一个页面、两个状态【任务清单第 7 点】
      *
      * 用户要求：
-     *   · 6 项全保留 + "震动强度" ⇒ 7 项
+     *   · 6 项全保留 + "震动强度" -> 7 项
      *   · 按 KEY2 进下一级：**SPI 显示全部设置项，I2C 显示该项的功能内容**
      *   · 电位器调"音量"和"震动强度"，**每百分之一步进**
      *   · KEY4 返回时把百分比**固化**（存 EEPROM）
@@ -1212,7 +1676,6 @@ void Menu_OnEvent(const Event_t *evt)
         {
             s_setEdit = 0;
             Storage_SaveAll();
-            Music_Beep(20);
             Menu_Back();
             break;
         }
@@ -1223,64 +1686,37 @@ void Menu_OnEvent(const Event_t *evt)
             if (evt->type == EVT_KEY3)
             {
                 s_setSel = (s_setSel == 0) ? (u8)(SET_ITEM_COUNT - 1) : (u8)(s_setSel - 1);
-                Display_RequestMain();
-                Display_RequestFull();
+                Display_Refresh(0);
             }
             else if (evt->type == EVT_KEY4)
             {
                 s_setSel++;
                 if (s_setSel >= SET_ITEM_COUNT) { s_setSel = 0; }
-                Display_RequestMain();
-                Display_RequestFull();
+                Display_Refresh(0);
             }
             else if (evt->type == EVT_KEY1)
             {
                 s_setEdit = 1;
-                Music_Beep(20);
-                Display_RequestMain();
-                Display_RequestFull();
+                Display_Refresh(0);
             }
             break;
         }
 
-        /* ---- 编辑态 ---- */
-        if (evt->type == EVT_KEY1)          /* 新 KEY2 = 确认 + 100ms 反馈 */
-        {
-            /* 【第 7 点】用户原话是"确认后**马达或者蜂鸣器**给出持续 100ms 的反馈"。
-             * 两项都给反馈，但各用最"对口"的那个执行器：
-             *   · 震动强度 -> 马达：直接**感受到**强度大小，改完立刻知道合不合适
-             *   · 其余项（含音量）-> 蜂鸣器：直接**听到**音量大小
-             * 两者都是非阻塞的（到点在各自的 Tick 里收尾），不会卡住按键。
-             *
-             * 【2026-09-20 补】用户把蜂鸣器总开关关掉之后，蜂鸣器这条路静音了。
-             * 用户要的反馈是"马达**或**蜂鸣器"，所以这里让马达顶上 ——
-             * 否则在设置页按 KEY2 确认会**一点回应都没有**，
-             * 用户会以为按键坏了。 */
-            if (s_setSel == 6 || !Buzzer_IsEnabled())
-            {
-                Motor_Vibrate(100, g_settings.vibrate);
-                printf("[SET] item=%d feedback by MOTOR 100ms (vibrate=%d)\r\n",
-                       (int)s_setSel, (int)g_settings.vibrate);
-            }
-            else
-            {
-                Music_Beep(100);
-                printf("[SET] item=%d confirmed by BUZZER\r\n", (int)s_setSel);
-            }
-
-            Storage_SaveAll();
-        }
-        else if (evt->type == EVT_KEY3)     /* 新 KEY1 = 值减 */
+        /* ---- 编辑态 ----
+         * 【2026-09-21 用户要求】"所有菜单去掉最后一行 K2 OK，
+         *   并把这个 KEY2 OK 功能删除掉"
+         * -> 编辑态里 KEY2 的那个"确认 + 100ms 反馈"整块删掉了。
+         *   现在编辑态只管用 K1/K3（音量和震动强度还能用旋钮）调值，
+         *   按 KEY4 返回时自动存盘（EVT_KEY2 分支里已经做了 Storage_SaveAll）。 */
+        if (evt->type == EVT_KEY3)          /* 新 KEY1 = 值减 */
         {
             settings_step(0);
-            Display_RequestMain();
-            Display_RequestFull();
+            Display_Refresh(0);
         }
         else if (evt->type == EVT_KEY4)     /* 新 KEY3 = 值加 */
         {
             settings_step(1);
-            Display_RequestMain();
-            Display_RequestFull();
+            Display_Refresh(0);
         }
         break;
     }
@@ -1305,17 +1741,13 @@ void Menu_OnEvent(const Event_t *evt)
      * 掌机模式（M2 的页面，编号已经占好）
      *============================================================*/
     default:
-        /* M1 的掌机页只做一件事：KEY2 返回。
-         * 之前漏了这个分支 —— 进去之后按什么键都没反应，
-         * 只能干等 30 秒让 Menu_CheckIdle() 把页面弹回主页。
-         * 返回键必须在这里处理：App_Game.c 只管游戏逻辑，不管导航。 */
+        /* 【2026-09-22 清理】原来这里还有一句 Game_OnEvent(evt)（M1 占位）。
+         * 现在"7 游戏"已经有了自己的 case PAGE_GAME_HALL 分支，
+         * 走不到这里；而 App_Game.c 的占位函数已整体废弃（省 Flash）。
+         * 保留 KEY2 返回的行为，其余按键在这个分支里不响应。 */
         if (evt->type == EVT_KEY2)
         {
             Menu_Back();
-        }
-        else
-        {
-            Game_OnEvent(evt);
         }
         break;
     }
@@ -1349,6 +1781,12 @@ void Menu_Tick1s(void)
             s_pomoRemain--;
         }
 
+        /* 【2026-09-21 修用户报的"FOCUS 时间没有刷新走动"】
+         * 原来这里只把 s_pomoRemain 减了，**却没有任何人请求重画** ——
+         * 副屏上的 "FOCUS mm:ss" 自然就一直停在进页面时的那个值。
+         * 现在每秒请求一次"只重画行"（不清屏，不会闪）。 */
+        Display_Refresh(0);
+
         if (s_pomoRemain == 0)
         {
             /* 到点：提示音（不阻塞），并切到下一阶段 */
@@ -1357,9 +1795,7 @@ void Menu_Tick1s(void)
                 s_pomoDone++;
                 s_pomoRest   = 1;
                 s_pomoRemain = (u16)g_settings.pomodoro_rest * 60U;
-                Music_Play(SONG_BIRTHDAY, g_settings.volume);
-                printf("[POMO] focus done #%d -> rest %d min\r\n",
-                       (int)s_pomoDone, (int)g_settings.pomodoro_rest);
+                Music_Play(SONG_MALAN, g_settings.volume);
             }
             else
             {
@@ -1367,13 +1803,13 @@ void Menu_Tick1s(void)
                 s_pomoRunning = 0;
                 s_pomoRemain = (u16)g_settings.pomodoro_work * 60U;
                 Music_Play(SONG_STAR, g_settings.volume);
-                printf("[POMO] rest done -> back to focus\r\n");
             }
         }
     }
 
-    /* 掌机模式的秒级逻辑（M2 会用，现在空转） */
-    Game_Tick1s();
+    /* 【2026-09-22 清理】原来这里调 Game_Tick1s()（M1 占位、空实现）。
+     * 掌机模式的周期逻辑已经全部收进 Game_Poll()（TASK_LOGIC 里 10ms 一次），
+     * 不需要秒级钩子了。 */
 }
 
 /*========================================================================
@@ -1401,7 +1837,6 @@ void task_logic(void) _task_ TASK_LOGIC
     BOOT_CRUMB(0);
     Led_SetSingle(0, 1);
 
-    printf("[LOGIC] task ready, clock valid=%d\r\n", (int)Clock_IsValid());
 
     /* "每秒"用 g_sysTick 判断，不用 os_wait 计数 —— 这样即使任务被抢占，
      * 秒还是会准时到（《02》4.1：时间推进不依赖等待）。 */
@@ -1443,7 +1878,13 @@ void task_logic(void) _task_ TASK_LOGIC
             Menu_OnEvent(&evt);
         }
 
-        /* 5) 30 秒没操作自动回主界面 */
+        /* 5) 测距仪：在测距仪页每 150ms 测一次（内部自己判断页面与节流） */
+        Range_Poll();
+
+        /* 【掌机模式】10ms 一拍：4 键同按退出 + 按节拍推帧 */
+        Game_Poll();
+
+        /* 6) 30 秒没操作自动回主界面 */
         Menu_CheckIdle();
 
         os_wait2(K_TMO, 2);     /* 2 x 5ms = 10ms */

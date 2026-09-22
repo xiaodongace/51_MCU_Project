@@ -71,8 +71,6 @@ typedef struct
 } I2C_IsrTypeDef;
 
 
-extern u8 xdata I2C_Buffer[I2C_BUF_LENTH];
-extern bit DisplayFlag;
 
 void I2C_Init(I2C_InitTypeDef *I2Cx);
 void I2C_WriteNbyte(u8 dev_addr, u8 mem_addr, u8 *p, u8 number);

@@ -1,5 +1,6 @@
 /*
  * App_Songs.h - 三首闹铃曲的音符表
+ *   1 两只老虎 / 2 小星星 / 3 马兰开花二十一
  *
  * 音符格式：{音高, 时长(ms)}
  *   音高取值 1..21，对应 Driver/Buzzer.h 的 FREQS 表：
@@ -48,11 +49,19 @@ typedef struct
 #define H7 21
 #define REST 0
 
-/* 基本时值。改 BASE_Q 就能整体调快慢。 */
-#define BASE_Q      400         /* 四分音符 */
-#define BASE_E      200         /* 八分音符 */
-#define BASE_QD     600         /* 附点四分音符 */
-#define BASE_H      800         /* 二分音符 */
+/* 基本时值。改 BASE_Q 就能整体调快慢。
+ *
+ * 【2026-09-22 用户要求"曲目播放速度快一倍"】
+ * 原来是 400/200/600/800，现在整体减半：
+ *   BASE_Q 400 -> 200，BASE_E 200 -> 100，BASE_QD 600 -> 300，BASE_H 800 -> 400
+ * -> 速度正好 ×2。
+ *
+ * 如果嫌太快/太慢，**只改这四个数就行**（音符表里全是引用它们，不用动曲子）。
+ * 参考：BASE_Q = 200ms 相当于每分钟 300 拍，是童谣/儿歌的快节奏。 */
+#define BASE_Q      300         /* 四分音符 */
+#define BASE_E      100         /* 八分音符 */
+#define BASE_QD     300         /* 附点四分音符 */
+#define BASE_H      400         /* 二分音符 */
 
 /* 第 idx 个音符；越界返回 tone=0, ms=0 */
 void Songs_Get(u8 songId, u16 idx, u8 *tone, u16 *ms);

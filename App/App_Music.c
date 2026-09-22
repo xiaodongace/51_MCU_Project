@@ -27,6 +27,11 @@ static u32 s_noteStart = 0;         /* 当前音符开始时的系统时钟 */
 static u8  s_playing = 0;
 static u8  s_loop    = 0;           /* 1 = 放完从头再来（响铃用） */
 
+/* 【2026-09-22 断音状态】见 play_current() 里的说明。
+ * 每个音符分两段：先"响" s_noteMs，再"静音" s_gapMs，然后才进下一个音符。 */
+static u8  s_gapPhase = 0;          /* 1 = 正在断音（静音）那一段 */
+static u16 s_gapMs    = 0;          /* 本音符的断音时长 */
+
 /*========================================================================
  *                              内部函数
  *========================================================================*/
@@ -54,7 +59,31 @@ static void play_current(void)
         }
     }
 
-    s_noteMs    = ms;
+    /* 【2026-09-22 修用户报的"音调慢的有拖音"】
+     *
+     * 根因：原来音符之间**没有任何断音** —— 上一个音一直响到下一个音开始的那一瞬间。
+     * 方波蜂鸣器没有衰减，于是：
+     *   · **同音相邻**的音符会被连成一个长音。最典型的是《两只老虎》
+     *     的 "3 1 | 1 2 3"：句尾的 1 和下一句开头的 1 合成一个两拍长音，
+     *     乐句的分界消失，节奏整个塌掉；
+     *   · 不同音之间也没有"字头"，听着黏成一片。
+     * -> 主观感受就是"音调慢 / 拖音"（其实是**没有断音**，不是速度问题）。
+     *
+     * 解法很朴素：**每个音符只响 7/8，留 1/8 静音当断音**。
+     * 两段加起来正好还是 ms -> 不影响速度，只是把音符切开、给出字头。
+     * 休止符本来就是静音，不用再切。 */
+    if (tone == REST)
+    {
+        s_gapMs  = 0;
+        s_noteMs = ms;
+    }
+    else
+    {
+        s_gapMs  = (u16)(ms / 8);
+        s_noteMs = (u16)(ms - s_gapMs);
+    }
+
+    s_gapPhase  = 0;
     s_noteStart = g_sysTick;
 
     if (tone == REST)
@@ -81,6 +110,7 @@ static void music_start(u8 songId, u8 volume, u8 loop)
     s_idx    = 0;
     s_loop   = loop;
     s_playing = 1;
+    s_gapPhase = 0;
 
     play_current();
 }
@@ -142,6 +172,8 @@ void Music_Stop(void)
     s_song    = SONG_NONE;
     s_idx     = 0;
     s_noteMs  = 0;
+    s_gapPhase = 0;
+    s_gapMs    = 0;
 }
 
 u8 Music_IsPlaying(void)
@@ -183,6 +215,18 @@ void Music_Tick(void)
 
     if (SysTick_Elapsed(s_noteStart) >= (u32)s_noteMs)
     {
+        /* 先走"断音"那一段（静音一小会儿），再起下一个音符。
+         * 少了这一步，相邻音符会糊在一起 —— 那就是用户听到的"拖音"。 */
+        if (!s_gapPhase && s_gapMs != 0)
+        {
+            s_gapPhase  = 1;
+            s_noteMs    = s_gapMs;
+            s_noteStart = SysTick_Get();
+            Buzzer_Stop();
+            return;
+        }
+
+        s_gapPhase = 0;
         s_idx++;
         play_current();
     }

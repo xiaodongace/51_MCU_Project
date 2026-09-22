@@ -332,39 +332,13 @@
 //                           外部函数和变量声明
 //========================================================================
 
-u8 NVIC_Timer0_Init(u8 State, u8 Priority);
-u8 NVIC_Timer1_Init(u8 State, u8 Priority);
 u8 NVIC_Timer2_Init(u8 State, u8 Priority);
 u8 NVIC_Timer3_Init(u8 State, u8 Priority);
-u8 NVIC_Timer4_Init(u8 State, u8 Priority);
-u8 NVIC_INT0_Init(u8 State, u8 Priority);
-u8 NVIC_INT1_Init(u8 State, u8 Priority);
-u8 NVIC_INT2_Init(u8 State, u8 Priority);
 u8 NVIC_INT3_Init(u8 State, u8 Priority);
-u8 NVIC_INT4_Init(u8 State, u8 Priority);
 u8 NVIC_ADC_Init(u8 State, u8 Priority);
-u8 NVIC_SPI_Init(u8 State, u8 Priority);
-u8 NVIC_CMP_Init(u8 State, u8 Priority);
 u8 NVIC_I2C_Init(u8 Mode, u8 State, u8 Priority);
 u8 NVIC_UART1_Init(u8 State, u8 Priority);
-u8 NVIC_UART2_Init(u8 State, u8 Priority);
-u8 NVIC_UART3_Init(u8 State, u8 Priority);
-u8 NVIC_UART4_Init(u8 State, u8 Priority);
 u8 NVIC_PWM_Init(u8 Channel, u8 State, u8 Priority);
-u8 NVIC_RTC_Init(u8 State, u8 Priority);
-u8 NVIC_DMA_ADC_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_M2M_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_SPI_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_LCM_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_UART1_Tx_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_UART1_Rx_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_UART2_Tx_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_UART2_Rx_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_UART3_Tx_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_UART3_Rx_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_UART4_Tx_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_DMA_UART4_Rx_Init(u8 State, u8 Priority, u8 Bus_Priority);
-u8 NVIC_LCM_Init(u8 State, u8 Priority);
 
 #endif
 

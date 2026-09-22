@@ -522,14 +522,19 @@
               <FilePath>.\App\App_Uart.c</FilePath>
             </File>
             <File>
-              <FileName>App_Game.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\App\App_Game.h</FilePath>
+              <FileName>App_GmBrick.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\Game\App_GmBrick.c</FilePath>
             </File>
             <File>
-              <FileName>App_Game.c</FileName>
+              <FileName>App_GmSnake.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\App\App_Game.c</FilePath>
+              <FilePath>.\App\Game\App_GmSnake.c</FilePath>
+            </File>
+            <File>
+              <FileName>App_GmPlane.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\App\Game\App_GmPlane.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -681,6 +686,11 @@
               <FileType>1</FileType>
               <FilePath>.\Driver\Servo.c</FilePath>
             </File>
+            <File>
+              <FileName>HC_SR04.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Driver\HC_SR04.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -690,11 +700,6 @@
               <FileName>ADC.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Lib\ADC.c</FilePath>
-            </File>
-            <File>
-              <FileName>ADC_Isr.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Lib\ADC_Isr.c</FilePath>
             </File>
             <File>
               <FileName>EEPROM.c</FileName>
@@ -727,19 +732,9 @@
               <FilePath>.\Lib\I2C.c</FilePath>
             </File>
             <File>
-              <FileName>I2C_Isr.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Lib\I2C_Isr.c</FilePath>
-            </File>
-            <File>
               <FileName>Delay.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Lib\Delay.c</FilePath>
-            </File>
-            <File>
-              <FileName>Soft_I2C.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Lib\Soft_I2C.c</FilePath>
             </File>
             <File>
               <FileName>STC8H_PWM.c</FileName>

@@ -5,7 +5,7 @@
  * Timer3 每 1 毫秒把 g_sysTick 拨一格，所有需要计时的地方都用
  * SysTick_Get() / SysTick_Elapsed() 读差值，不靠 os_wait2 站着等。
  *
- * ⚠ 本文件是 2026-09-17 真机联调第 2 轮补上的。
+ * ※ 本文件是 2026-09-17 真机联调第 2 轮补上的。
  *   第 1 版以 day17 v3.1 为基座搬库时漏了这个文件的初始化：
  *   Lib/Timer_Isr.c 里的 Timer3_ISR_Handler 已经把 g_sysTick++ 写好了，
  *   但全工程没有任何地方调用 Timer_Inilize(Timer3,...) 与 NVIC_Timer3_Init(...)，

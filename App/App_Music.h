@@ -19,7 +19,7 @@
 #define SONG_NONE       0
 #define SONG_TIGER      1       /* 两只老虎 */
 #define SONG_STAR       2       /* 小星星 */
-#define SONG_BIRTHDAY   3       /* 生日快乐 */
+#define SONG_MALAN      3       /* 马兰开花二十一（跳皮筋童谣）*/
 #define SONG_COUNT      3
 
 /*

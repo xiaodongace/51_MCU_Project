@@ -1,4 +1,4 @@
-#include "spi_oled.h"
+#include "SPI_OLED.h"
 #include "GPIO.h"       /* 【本项目新增】SPI 引脚驱动能力配置要用端口模式宏 */
 
 
@@ -390,7 +390,7 @@ void SPI_OLED_Init(void)
 	SPI_OLED_ROM_CS_Set();
 	os_wait2(K_TMO, 40); // 5ms * 40 = 200ms
 	
-	SPI_OLED_WR_Byte(0xAE,SPI_OLED_CMD);//--turn off oled panel
+	SPI_OLED_WR_Byte(0xAE,SPI_OLED_CMD);//--turn off SPI_OLED panel
 	SPI_OLED_WR_Byte(0x00,SPI_OLED_CMD);//---set low column address
 	SPI_OLED_WR_Byte(0x10,SPI_OLED_CMD);//---set high column address
 	SPI_OLED_WR_Byte(0x40,SPI_OLED_CMD);//--set start line address  Set Mapping RAM Display Start Line (0x00~0x3F)
@@ -422,3 +422,102 @@ void SPI_OLED_Init(void)
 }
 
 
+//=====================================开机动画
+xdata char SPI_OLED_GRAM[1024]; // 显存
+
+/**
+ * @brief 刷新显存
+ *
+ */
+void SPI_OLED_Refresh()
+{
+    u8 x, y;
+    u16 j = 0;
+
+    for (y = 0; y < 8; y++) {
+        SPI_OLED_address(0, y);
+        for (x = 0; x < 128; x++) {
+            SPI_OLED_WR_Byte(SPI_OLED_GRAM[y * 128 + x], SPI_OLED_DATA);
+        }
+    }
+}
+
+/**
+ * @brief 刷新显存的一部分
+ *
+ * @param xstart 起始横坐标
+ * @param ystart 起始纵坐标
+ * @param width  宽度
+ * @param height 高度，范围0-7
+ */
+void SPI_OLED_RefreshPart(u8 xstart, u8 ystart, u8 width, u8 height)
+{
+    u8 x, y;
+
+    for (y = ystart; y < (ystart + height); y++) {
+        SPI_OLED_address(xstart, y);
+        for (x = xstart; x < (xstart + width); x++) {
+            SPI_OLED_WR_Byte(SPI_OLED_GRAM[y * 128 + x], SPI_OLED_DATA);
+        }
+    }
+}
+
+/*
+ * @brief 显存全填充
+ *
+ */
+void SPI_OLED_GFill()
+{
+    u16 i;
+
+    for (i = 0; i < 1024; i++) {
+        SPI_OLED_GRAM[i] = 0xff;
+    }
+}
+
+/**
+ * @brief 显存清空
+ *
+ */
+void SPI_OLED_GClear()
+{
+    u16 i;
+
+    for (i = 0; i < 1024; i++) {
+        SPI_OLED_GRAM[i] = 0x00;
+    }
+}
+
+/**
+ * @brief 绘制一个点
+ *
+ * @param x 点的横坐标
+ * @param y 点的纵坐标
+ */
+void SPI_OLED_DrawPoint(u8 x, u8 y)
+{
+    u8 n, m;
+    if ((x < 0) || (x > 127) || (y < 0) || (y > 63)) return; // 防止超出范围
+
+    n = y / 8; // n = 0-7
+    m = y % 8; // m = 0-7
+
+    SPI_OLED_GRAM[n * 128 + x] |= (0x01 << m);
+}
+
+/**
+ * @brief 清除一个点
+ *
+ * @param x 点的横坐标
+ * @param y 点的纵坐标
+ */
+void SPI_OLED_ClearPoint(u8 x, u8 y)
+{
+    u8 n, m;
+    if ((x < 0) || (x > 127) || (y < 0) || (y > 63)) return; // 防止超出范围
+
+    n = y / 8; // n = 0-7
+    m = y % 8; // m = 0-7
+
+    SPI_OLED_GRAM[n * 128 + x] &= ~(0x01 << m);
+}

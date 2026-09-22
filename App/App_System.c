@@ -3,13 +3,7 @@
  *
  * 配置序列逐字对齐 v3.1 App/App_System.c：
  *   EAXSFR() -> GPIO_config() -> UART_config() -> I2C_config() -> ADC_config()
- *   -> Buzzer_init() -> EA = 1 -> printf
- *
- * 本工程在此之上补了三件 v3.1 没做、但必须做的事：
- *
- *   1) 上电第一件事把"默认电平危险"的引脚按到安全电平。
- *      STC8H 复位后 P0 是准双向口且输出寄存器为 1 = 高电平。
- *      马达 P0.1 是"高电平震"，所以从复位到 Motor_Init() 之间会一直震。
+ *   -> Buzzer_init() -> EA = 1 -> 之间会一直震。
  *
  *   2) 各外设的 IO 模式由各自的驱动 init 负责（江文聪老师封装驱动的做法），
  *      App_System 只补一个旋钮 ADC 输入口 P0.5。
@@ -44,7 +38,8 @@
 #include "Timers.h"
 
 #include "App_Storage.h"
-#include "App_Game.h"
+
+#include "SPI_OLED.h"
 
 /*========================================================================
  *                        上电进度指示（诊断手段）
@@ -207,7 +202,6 @@ void I2C_config(void)
         I2C_SW(I2C_P33_P32);
     }
 
-    printf("[I2C] hardware I2C, speed N=%u\r\n", (unsigned)I2C_SPEED_SEL);
 }
 
 /* ADC（照抄 v3.1 App_System.c，参数一个没改） */
@@ -226,6 +220,86 @@ void ADC_config(void)
     ADC_PowerControl(ENABLE);
 
     NVIC_ADC_Init(DISABLE, Priority_0);
+}
+
+
+
+/*========================================================================
+ *                          开机动画
+ *
+ * 【2026-09-22 用户要求】"动画换回原样子吧，现在的动画又快又丑"
+ *   -> **观感参数换回原始值**：半径步长 1（每圈都画）+ 每帧 delay_ms(15)。
+ *      上次为了提速把步长改成 6，代价就是"一跳一跳"的台阶感 —— 是我改错了。
+ *
+ * 【保留 1】代码结构仍然是**一个函数**（原来 Expand / Contract 两个合并成一个，
+ *   去掉重复的"算最大半径"和中间状态）—— 这是纯粹的代码简化，观感与原来一致。
+ *
+ * 【保留 2】"动画期间其他设备一律不许动"是靠 sys_init 的调用位置保证的，
+ *   那是独立需求，继续有效（见下面那段说明）。
+ *
+ * 【代价 vs 观感：留两个旋钮，以后想折中只改这两个数】
+ *   step  = 半径步长。1 = 每圈都画（**原始观感，平滑**）；调大 -> 更快但台阶越明显
+ *   delay = 每帧延时（ms），越小越快
+ *   当前 129 帧 × 15ms + 每帧一次整屏刷新（软件 SPI 约 8.5ms）≈ 3.0 秒。
+ *   **想折中请先动 delay（8~10ms），再考虑 step = 2** ——
+ *   因为 step 直接毁掉平滑度，而 delay 只影响快慢。
+ *
+ * 【"动画期间其他设备一律不许动" —— 靠 sys_init 的调用位置保证】
+ *   本函数被安排在**全系统最干净的窗口**里（见 sys_init 第 3.5 步）：
+ *     · EA = 0                → 一个中断都不会来（数码管扫描 / 1ms 时基 / 时钟中断全不发生）
+ *     · LED 总开关还关着       → 8 颗灯**物理上**不可能亮（Led_Power(1) 排在动画之后）
+ *     · 蜂鸣器 / 马达还没 Init → PWM5/PWM6 输出使能没开，引脚已被 *_SafeLevel 按低
+ *     · 数码管还没 Init        → Timer2 没配，位选/段选都没被驱动
+ *     · 舵机信号脚已 Servo_SafeLevel 拉低
+ *     · I2C 副屏还没 Init      → SSD1306 上电默认显示关（0xAE），全黑
+ *   -> 所以这里**不要**再往里加任何"点亮别的东西"的动作。
+ *========================================================================*/
+void boot_animation(void)
+{
+    u8 i;
+    u8 j;
+    u8 cx   = 64;               /* 屏幕中心 */
+    u8 cy   = 32;
+    /* 【观感参数 · 已换回原始值】step = 1 表示"每圈都画"，看上去是平滑扩张。
+     * 上次改成 6 想提速，结果是一跳一跳的台阶感 —— 用户："又快又丑"。
+     * 想调快慢就改这两个数：step（台阶感）和下面的 delay_ms（帧率）。 */
+    u8 step = 1;
+
+    /* ---- 由中心向外扩散 ---- */
+    SPI_OLED_GClear();
+
+    for (i = 0; i <= 64; i = (u8)(i + step))
+    {
+        for (j = 0; j <= i; j++)
+        {
+            SPI_OLED_DrawPoint((u8)(cx + j), (u8)(cy + i - j));
+            SPI_OLED_DrawPoint((u8)(cx - j), (u8)(cy + i - j));
+            SPI_OLED_DrawPoint((u8)(cx + j), (u8)(cy - i + j));
+            SPI_OLED_DrawPoint((u8)(cx - j), (u8)(cy - i + j));
+        }
+
+        SPI_OLED_Refresh();
+        delay_ms(15);
+    }
+
+    /* ---- 再由外向内收缩 ---- */
+    for (i = 64; i > 0; i = (u8)(i - step))
+    {
+        for (j = 0; j <= i; j++)
+        {
+            SPI_OLED_ClearPoint((u8)(cx + j), (u8)(cy + i - j));
+            SPI_OLED_ClearPoint((u8)(cx - j), (u8)(cy + i - j));
+            SPI_OLED_ClearPoint((u8)(cx + j), (u8)(cy - i + j));
+            SPI_OLED_ClearPoint((u8)(cx - j), (u8)(cy - i + j));
+        }
+
+        SPI_OLED_Refresh();
+        delay_ms(15);
+    }
+
+    /* ---- 收尾：整屏清干净，交给后面的正常刷屏 ---- */
+    SPI_OLED_GClear();
+    SPI_OLED_Refresh();
 }
 
 /*========================================================================
@@ -248,9 +322,11 @@ void sys_init(void)
     Servo_SafeLevel();
 
     Led_Init();             /* 配 8 颗灯与总开关的端口模式，并全灭 */
-    Led_Power(1);           /* 打开小灯总开关 —— BOOT_CRUMB 要能看到 */
-    BOOT_CRUMB(1);
-
+    /* 【2026-09-21 用户要求】开机动画期间"其他所有设备不能亮或者有反应"。
+     * 这里**故意只配端口 + 全灭，先不开总开关** ——
+     * 总开关关着，8 颗灯在物理上就不可能亮。
+     * Led_Power(1) 挪到开机动画之后（见下面第 3.5 步）。 */
+    
     /* ---------- 2) 扩展寄存器访问使能 + 全项目 1ms 系统时钟 ---------- */
     EAXSFR();
 
@@ -260,15 +336,39 @@ void sys_init(void)
      * 按键消抖判据永不成立（按键全无反应）、每秒节拍永不成立（时间/闹钟静止）。
      * 必须放在各外设之前：后面一切"看钟算差值"的逻辑都依赖它。 */
     Timers_Init();
-    BOOT_CRUMB(2);
-
+    
     /* ---------- 3) 通信与模拟外设 ---------- */
     GPIO_config();
     UART_config();
     I2C_config();
     ADC_config();
-    BOOT_CRUMB(3);
+    
+    /* ---------- 3.5) 开机动画：全系统最干净的窗口 ----------
+     * 【2026-09-21 用户要求】"开机动画期间，其他所有设备不能亮或者有反应"。
+     *
+     * 把动画卡在这一步是有意的，此刻：
+     *   · EA = 0（还没开总中断）→ 数码管扫描(Timer2)、1ms 时基(Timer3)、
+     *     时钟芯片中断(INT3) **一个都不会来**
+     *   · LED 总开关关着 → 8 颗灯物理上不可能亮
+     *   · 蜂鸣器(PWM5)/马达(PWM6) 还没 Init，且引脚已被 *_SafeLevel 按低
+     *   · 数码管还没 Init（Timer2 没配、位选/段选没驱动）
+     *   · 舵机信号脚已被 Servo_SafeLevel 拉低
+     *   · I2C 副屏还没 Init，SSD1306 上电默认显示关（0xAE）→ 全黑
+     * -> 动画**结束之前**，任何别的设备都不会有反应。
+     *   （原有的 BOOT_CRUMB(1..3) 排在这一段之后，所以也不受影响。） */
+    SPI_OLED_Init();
+    SPI_OLED_ColorTurn(0);    // 0正常显示，1 反色显示
+    SPI_OLED_DisplayTurn(0); // 0正常显示 1 屏幕翻转显示
+    boot_animation();
+    //=====================================开机动画
 
+    /* 动画结束，现在才允许点灯（上面第 1 步里故意没开总开关） */
+    Led_Power(1);
+    
+    BOOT_CRUMB(1);
+    BOOT_CRUMB(2);
+    BOOT_CRUMB(3);
+    
     /* ---------- 4) PWM 相关：蜂鸣器（PWM5）与马达（PWM6），两者同属 PWMB ---------- */
     Buzzer_Init();
     Motor_Init();
@@ -286,18 +386,15 @@ void sys_init(void)
      * 只读不写：读出来无效就填默认值（Storage_Load 内部处理）。
      * 这里不做任何 I2C 访问 —— 见本文件头部"A"的说明。 */
     Storage_Load();
-    Game_Init();
+    /* 【2026-09-22】原来这里还有一句 Game_Init()（M1 占位：只清状态）。
+     * 掌机功能改到 App_Menu.c 之后，游戏状态由 menu_enter(PAGE_GAME_HALL)
+     * 和 game_start() 负责初始化，这里不需要了。
+     * （App_Game.c 的 4 个占位函数已整体废弃 —— 它们白占 Flash，见该文件说明。） */
     BOOT_CRUMB(6);
 
     /* ---------- 7) 开全局中断 ---------- */
     EA = 1;
     BOOT_CRUMB(7);
-
-    printf("\r\n==================================\r\n");
-    printf(" 51_MCU_Alarm build %s\r\n", APP_VERSION_STR);
-    printf(" sys_init done, logCount=%u\r\n", (unsigned)Storage_LogCount());
-    printf(" boot crumb: 8 颗小灯全亮 = 初始化走完\r\n");
-    printf("==================================\r\n");
-
+    
     BOOT_CRUMB(8);
 }

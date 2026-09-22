@@ -49,7 +49,7 @@ sbit BUZZER = P0 ^ 0;
  * （只掐 Music_Beep 的提示音路径，不动 Music_Play），本条注释下方有说明。
  *
  * 改回 1 即可完整恢复（音量算式仍是百分比 0..100，不受影响）。 */
-#define BUZZER_ENABLE        0    /* 【2026-09-20】用户要求关闭蜂鸣器 */
+#define BUZZER_ENABLE        1    /* 【2026-09-21】用户要求重新开启蜂鸣器 */
 
 /* 上电安全电平：只写 IO，可在 EAXSFR() 之前调用 */
 void Buzzer_SafeLevel(void);

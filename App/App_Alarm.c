@@ -277,8 +277,6 @@ void Alarm_Start(u8 idx)
         Music_Play(song, vol);
     }
 
-    printf("[ALARM] ring idx=%d song=%d vol=%d mode=%d\r\n",
-           (int)idx, (int)song, (int)vol, (int)g_settings.alert_mode);
 }
 
 void Alarm_Stop(void)
@@ -320,7 +318,6 @@ void Alarm_Snooze(void)
     s_lastSunrise = 0;
     g_ringingIdx = 0;
 
-    printf("[ALARM] snooze %d min\r\n", (int)min);
 }
 
 u8 Alarm_IsRinging(void)
@@ -370,7 +367,6 @@ u8 Alarm_Tick1s(void)
         s_ringSec++;
         if (s_ringSec >= ALARM_AUTO_STOP_SEC)
         {
-            printf("[ALARM] auto stop after %d s\r\n", (int)ALARM_AUTO_STOP_SEC);
             Alarm_Stop();
         }
         /* 正在响的这一秒不再做兜底比对，避免叠音 */
@@ -619,5 +615,4 @@ void Alarm_Init(void)
 
     Alarm_ApplyHardware();
 
-    printf("[ALARM] init done, hw alarm rewritten\r\n");
 }

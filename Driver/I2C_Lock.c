@@ -68,7 +68,6 @@ void I2C_Lock(void)
          * 现在只在 4 秒真超时、需要强夺锁这种"本该不发生"的时刻打印一次。 */
         if (wait > 800)         /* 800 x 5ms = 4s */
         {
-            printf("[I2C] lock timeout 4s, force take (不该出现，请查持锁方)\r\n");
             EA = 0;
             s_locked = 1;
             EA = 1;

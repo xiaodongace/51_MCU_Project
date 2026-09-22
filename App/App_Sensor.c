@@ -64,13 +64,6 @@ u8 Sensor_ReadOnce(void)
     if (s_failCnt >= HUMI_FAIL_LIMIT)
     {
         g_humiValid = 0;        /* 界面据此显示 "--" */
-
-        /* 只打印前几次，避免每秒刷屏把串口占满 */
-        if (s_failCnt == HUMI_FAIL_LIMIT)
-        {
-            printf("[SENSOR] DHT11 fail x%d, err=%d -> show --\r\n",
-                   (int)s_failCnt, (int)rst);
-        }
     }
 
     return 0;
@@ -95,37 +88,8 @@ u8 Sensor_Tick1s(void)
         /* 记录只存整数摄氏度（表查出来本来就是整数），湿度用整数部分 */
         Storage_AppendLog((s8)(g_tempX10 / 10), g_humiValid ? g_humi : 0);
 
-        printf("[SENSOR] log #%d T=%d H=%d\r\n",
-               (int)Storage_LogCount(),
-               (int)(g_tempX10 / 10),
-               (int)g_humi);
 
         wrote = 1;
-    }
-
-    /*
-     * 【诊断】每 5 秒打一次 1ms 系统时钟的读数。
-     *
-     * 为什么要放在这里打：本函数由 TASK_SENSOR 每 1 秒调用一次，
-     * 而它的 1 秒是靠 RTX51 的 5ms 心跳（os_wait2）数出来的，
-     * **完全不依赖 g_sysTick**。所以即使 g_sysTick 死了，这一行也照常打印 ——
-     * 正好用它当"参照系"来判断 g_sysTick 有没有在正常走。
-     *
-     * 判读（两次打印之间隔 5 秒）：
-     *   g_sysTick 每 5 秒增加约 5000   -> Timer3 1ms 节拍正常
-     *   增加远小于 5000（比如几百）    -> Timer3 被长时间关中断/被抢占，节拍丢了
-     *   几乎不增加（一直是同一个数）    -> Timer3 中断根本没产生
-     */
-    {
-        static u8 s_tickDbg = 0;
-
-        s_tickDbg++;
-        if (s_tickDbg >= 5)
-        {
-            s_tickDbg = 0;
-            printf("[TICK] g_sysTick=%lu (每 5 秒应 +5000)\r\n",
-                   (unsigned long)g_sysTick);
-        }
     }
 
     return wrote;

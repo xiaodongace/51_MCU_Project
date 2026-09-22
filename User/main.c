@@ -35,6 +35,9 @@ void Sys_Init(void) {
     /* 初始化8个LED */
     LED_Init();
 
+    /* 初始化热敏电阻引脚与ADC模块 */
+    NTC_init();
+
     /*
      * 初始化数码管移位寄存器引脚。
      * Timer3中断开始运行后会周期调用Nixie_Refresh()。

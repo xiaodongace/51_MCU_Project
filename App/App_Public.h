@@ -9,6 +9,8 @@
 #include "I2C_OLED.h"
 #include "DHT_11.h"
 #include "SPI_OLED.h"
+#include "NTC.h"
+#include "ADC.h"
 
 // 这里可以放置一些公共的宏定义、类型定义、函数声明等
 #define App_Main_Task_Id            0

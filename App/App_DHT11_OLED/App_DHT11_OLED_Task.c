@@ -28,6 +28,18 @@ static void DHT11_ShowFrame(void) {
     x = I2C_OLED_ShowChinese(x, 2, 2, 16);
     x = I2C_OLED_ShowChinese(x, 2, 3, 16);
     I2C_OLED_ShowChar(x, 2, ':', 16);
+
+    /* 第三行显示“电压：” */
+    x = 0;
+    x = I2C_OLED_ShowChinese(x, 4, 5, 16);
+    x = I2C_OLED_ShowChinese(x, 4, 6, 16);
+    I2C_OLED_ShowChar(x, 4, ':', 16);
+    
+    /* 第四行显示“电阻：” */
+    x = 0;
+    x = I2C_OLED_ShowChinese(x, 6, 9, 16);
+    x = I2C_OLED_ShowChinese(x, 6, 10, 16);
+    I2C_OLED_ShowChar(x, 6, ':', 16);
 }
 
 /*
@@ -36,14 +48,20 @@ static void DHT11_ShowFrame(void) {
  */
 static void DHT11_ShowData(
     float humidity,
-    float temperature) {
+    float temperature,
+    float vol,
+    float ntc) {
     u8 x;
     char hum_buf[12];
     char temp_buf[12];
+    char vol_buf[12];
+    char ntc_buf[12];
 
     /* 格式化湿度和温度，末尾空格用于覆盖旧内容 */
-    sprintf(hum_buf, "%5.1f%% ", humidity);
-    sprintf(temp_buf, "%6.1f ", temperature);
+    sprintf(hum_buf, "%6.2f%% ", humidity);
+    sprintf(temp_buf, "%6.2f ", temperature);
+    sprintf(vol_buf, "%5.2f ", vol);
+    sprintf(ntc_buf, "%6.2f ", ntc);
 
     /* 更新湿度值 */
     I2C_OLED_ShowString(40, 0, hum_buf, 16);
@@ -51,6 +69,14 @@ static void DHT11_ShowData(
     /* 更新温度值，并在数值后显示摄氏度符号 */
     x = I2C_OLED_ShowString(40, 2, temp_buf, 16);
     I2C_OLED_ShowChinese(x, 2, 4, 16);
+
+    /* 更新电压值，数值从固定列40开始，单位用字符V */
+    x = I2C_OLED_ShowString(40, 4, vol_buf, 16);
+    I2C_OLED_ShowChar(x, 4, 'V', 16);
+
+    /* 更新电阻值，数值从固定列40开始，单位用字库11号Ω */
+    x = I2C_OLED_ShowString(40, 6, ntc_buf, 16);
+    I2C_OLED_ShowChinese(x, 6, 11, 16);
 }
 
 /*
@@ -72,6 +98,8 @@ void App_DHT11_OLED_Task(void) _task_ App_DHT11_Task_Id {
     u16 last_sample_ms;
     float humidity;
     float temperature;
+    float vol, ntc;
+    u16 adc_value;
     int8 result;
 
     /* 开机默认没有进入DHT11页面 */
@@ -97,6 +125,9 @@ void App_DHT11_OLED_Task(void) _task_ App_DHT11_Task_Id {
         if (!page_active) {
             /* 初始化DHT11单总线引脚 */
             DHT11_Init();
+
+            /* 初始化热敏电阻引脚与ADC模块 */
+            NTC_init();
 
             /* 初始化并开启I2C OLED */
             I2C_OLED_Init();
@@ -124,10 +155,16 @@ void App_DHT11_OLED_Task(void) _task_ App_DHT11_Task_Id {
             result = DHT11_get_info(
                 &humidity,
                 &temperature);
+                
+            // 电压
+            adc_value = Get_ADCResult(ADC_CH13);
+            vol = adc_value * 2.5 / 4096;
+            // 计算热敏电阻温度
+            ntc = NTC_get_temperature();
 
             /* 读取成功时更新数据，失败时显示错误提示 */
             if (result == SUCCESS)
-                DHT11_ShowData(humidity, temperature);
+                DHT11_ShowData(humidity, temperature, vol, ntc);
             else
                 DHT11_ShowError();
         }

@@ -37,7 +37,6 @@
 #include "Buzzer.h"
 #include "HC_SR04.h"      /* 云台：进页面初始化 PWM、离开时关输出 */
 #include "LED.h"        /* 上电进度指示收尾 + 按键事件指示灯 */
-#include "Keys.h"       /* Keys_IsPressed：掌机模式的"4 键同按强制退出"要用 */
 /* 三个游戏（在 App\Game\ 子目录，该目录不在 IncludePath 里，所以写相对路径）*/
 #include "Game/App_GmSnake.h"
 #include "Game/App_GmBrick.h"
@@ -80,11 +79,13 @@ static u16 s_dtMD     = 0;      /* 已输入的月日 */
 static u8  s_dtH      = 0;      /* 已输入的时 */
 static u8  s_dtM      = 0;      /* 已输入的分 */
 static u8  s_dtCnt    = 0;      /* 已输入位数 */
-static u8  s_dtErr    = 0;
+static u8  s_dtErr    = 0;      /* 上一次提交是否因非法被拒（给 I2C 显示提示） */
 
 /* ---- 「测距仪」任务的状态 ---- */
 static u16 s_rangeCm     = 0;       /* 最近一次测到的距离（厘米），0 = 没测到 */
-static u32 s_rangeNextMs = 0;       /* 下一次测量的时刻（节流到 150ms 一次） */      /* 上一次提交是否因非法被拒（给 I2C 显示提示）*/
+static u32 s_rangeNextMs = 0;       /* 下一次测量的时刻（节流到 150ms 一次） */
+
+/* ---- 「闹钟编辑」的状态（与上面两组无关；第 70 轮把注释归位） ---- */
 static u8 s_editIdx   = IDX_NONE;
 static u8 s_editField = 0;      /* 0=时 1=分 2=星期 3=开关 4=曲目 */
 static AlarmItem_t s_editBuf;
@@ -200,7 +201,7 @@ UIPageId_t Menu_Current(void)
  *   云台页被弹出去了，但它的外设没人关，舵机就一直挂在总线上。
  *
  * 【谁要在这里挂钩子】只有**独占型外设**才需要，即"打开就要占住引脚/定时器/PWM 通道"的：
- *   云台（PWMA 通道 3）、测距仪（Timer4 + P2.4/P3.6）。
+ *   云台（PWMA 通道 3）、测距仪（HC-SR04 的 TRIG / ECHO 两根 IO）。
  *   纯读传感器的页面（时钟、温湿度）不需要 —— 它们的外设在 sys_init 里配一次就够。
  *========================================================================*/
 /* 进入某个任务页时要做的事 */
@@ -285,8 +286,6 @@ void Menu_Push(UIPageId_t page)
     Display_SetPage(page);
     Display_Refresh(1);
 
-    /* 页面切换给一声提示音 —— 没有这一下，用户按了键只能靠"盯第 1 行字母有没有变"
-     * 判断有没有生效（真机反馈原话："只切换最上面一行字母，没有听到蜂鸣器响"）。 */
 }
 
 void Menu_Back(void)
@@ -359,34 +358,44 @@ void Menu_Home(void)
  *                     主屏任务清单（导航层）
  *========================================================================*/
 
+/*
+ * 任务清单：**一个下标 = 一个任务**。
+ *
+ * 【第 70 轮朴素化】原来这里是两个各含 7 个分支的 switch（页面 ID 一个、显示名一个），
+ * 两边的先后顺序必须人工保持一致 —— 加一个任务要改三处（两个 switch + MENU_TASK_COUNT），
+ * 漏改一处就会出现"名字和页面错位"。改成两张**同序码表**之后：
+ *   · 新增任务 = 两个表各加一行；表长就是 MENU_TASK_COUNT，写错了编译期就报
+ *   · Menu_IndexOf() 仍然按下标循环查表，逻辑不用动
+ */
+static u8 code s_taskPage[MENU_TASK_COUNT] =
+{
+    PAGE_HOME, PAGE_ALARM_LIST, PAGE_POMODORO, PAGE_RANGE,
+    PAGE_SERVO, PAGE_SETTINGS, PAGE_GAME_HALL
+};
+
+static char *code s_taskName[MENU_TASK_COUNT] =
+{
+    "日期和时间", "闹钟", "番茄钟", "测距仪", "云台", "设置", "游戏"
+};
+
 UIPageId_t Menu_TaskPage(u8 idx)
 {
-    switch (idx)
+    if (idx >= MENU_TASK_COUNT)
     {
-    case 0: return PAGE_HOME;
-    case 1: return PAGE_ALARM_LIST;
-    case 2: return PAGE_POMODORO;
-    case 3: return PAGE_RANGE;
-    case 4: return PAGE_SERVO;
-    case 5: return PAGE_SETTINGS;
-    case 6: return PAGE_GAME_HALL;
-    default: return PAGE_HOME;
+        return PAGE_HOME;
     }
+
+    return (UIPageId_t)s_taskPage[idx];
 }
 
 char *Menu_TaskName(u8 idx)
 {
-    switch (idx)
+    if (idx >= MENU_TASK_COUNT)
     {
-    case 0: return "日期和时间";
-    case 1: return "闹钟";
-    case 2: return "番茄钟";
-    case 3: return "测距仪";
-    case 4: return "云台";
-    case 5: return "设置";
-    case 6: return "游戏";
-    default: return "----";
+        return "----";
     }
+
+    return s_taskName[idx];
 }
 
 u8 Menu_IndexOf(UIPageId_t p)
@@ -972,7 +981,6 @@ static void dt_commit(void)
             g_clock.minute = s_dtM;
             g_clock.second = 0;
             Clock_Set(&g_clock);
-            Alarm_ApplyHardware();
             ok = 1;
         }
     }
@@ -1523,15 +1531,13 @@ void Menu_OnEvent(const Event_t *evt)
     }
 
     /*============================================================
-     * 测距仪（超声波）—— 2026-09-19 新增
-     * 目前只接上"返回上一级"，S4 再填测距逻辑。
      *============================================================*/
     /*============================================================
      * 测距仪（超声波）
      *
      * 测距本身是**周期自动做**的（Range_Poll 每 150ms 一次），
      * 所以这个页面不需要任何按键来触发测量 —— 只有"返回"。
-     * 版面：副屏显示数值 + 进度条；主屏显示大字距离。
+     * 版面：副屏显示数值 + 进度条；主屏只显示 TRIG/ECHO 两根引脚提示。
      *============================================================*/
     case PAGE_RANGE:
         switch (evt->type)
@@ -1829,7 +1835,7 @@ void Menu_OnEvent(const Event_t *evt)
         break;
 
     /*============================================================
-     * 掌机模式（M2 的页面，编号已经占好）
+     * 兜底分支：现在没有任何页面会走到这里
      *============================================================*/
     default:
         /* 【2026-09-22 清理】原来这里还有一句 Game_OnEvent(evt)（M1 占位）。
@@ -1972,7 +1978,7 @@ void task_logic(void) _task_ TASK_LOGIC
         /* 5) 测距仪：在测距仪页每 150ms 测一次（内部自己判断页面与节流） */
         Range_Poll();
 
-        /* 【掌机模式】10ms 一拍：4 键同按退出 + 按节拍推帧 */
+        /* 【掌机模式】10ms 一拍：推列表/游玩/结算三态（退出键见 GAME_KEY_EXIT） */
         Game_Poll();
 
         /* 6) 30 秒没操作自动回主界面 */

@@ -60,9 +60,6 @@ void Motor_On(u8 level);
 /* 停止震动（关闭 PWM6 输出使能，引脚回到低电平） */
 void Motor_Off(void);
 
-/* 查询当前是否在震 */
-u8 Motor_IsOn(void);
-
 /*
  * 震动 ms 毫秒后**自动停**（非阻塞）。
  *

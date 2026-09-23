@@ -2,18 +2,6 @@
 #include "GPIO.h"       /* 【本项目新增】SPI 引脚驱动能力配置要用端口模式宏 */
 
 
-//void delay_ms(unsigned int ms)
-//{                         
-//	unsigned int a;
-//	while(ms)
-//	{
-//		a=1800;
-//		while(a--);
-//		ms--;
-//	}
-//	return;
-//}
-
 //反显函数
 void SPI_OLED_ColorTurn(u8 i)
 {
@@ -115,21 +103,6 @@ void SPI_OLED_address(u8 x,u8 y)
 	SPI_OLED_WR_Byte((x&0x0f),SPI_OLED_CMD);            //设置列地址的低4位
 }
 
-//显示128x64点阵图像
-void SPI_OLED_Display_128x64(u8 *dp)
-{
-	u8 i,j;
-	for(i=0;i<8;i++)
-	{
-		SPI_OLED_address(0,i);
-		for(j=0;j<128;j++)
-		{
-			SPI_OLED_WR_Byte(*dp,SPI_OLED_DATA); //写数据到SPI_OLED,每写完一个8位的数据后列地址自动加1
-			dp++;
-    }
-  }
-}
-
 //显示16x16点阵图像、汉字、生僻字或16x16点阵的其他图标
 void SPI_OLED_Display_16x16(u8 x,u8 y,u8 *dp)
 {
@@ -159,18 +132,6 @@ void SPI_OLED_Display_8x16(u8 x,u8 y,u8 *dp)
 			dp++;
     }
 		y++;
-  }
-}
-
-//显示5*7点阵图像、ASCII, 或5x7点阵的自造字符、其他图标
-void SPI_OLED_Display_5x7(u8 x,u8 y,u8 *dp)
-{
-	u8 i;
-  SPI_OLED_address(x,y);
-	for(i=0;i<6;i++)
-	{
-		SPI_OLED_WR_Byte(*dp,SPI_OLED_DATA);
-		dp++;
   }
 }
 
@@ -295,71 +256,6 @@ void SPI_OLED_Display_GB2312_string(u8 x,u8 y,u8 *text)
   }
 }
 
-void SPI_OLED_Display_string_5x7(u8 x,u8 y,u8 *text)
-{
-	u8 i=0;
-	u8 addrHigh,addrMid,addrLow;
-	while(text[i]>0x00)
-	{
-		if((text[i]>=0x20)&&(text[i]<=0x7e))
-		{
-			u8 fontbuf[8];
-			fontaddr=(text[i]-0x20);
-			fontaddr=(unsigned long)(fontaddr*8);
-			fontaddr=(unsigned long)(fontaddr+0x3bfc0);
-			
-			addrHigh=(fontaddr&0xff0000)>>16;
-			addrMid=(fontaddr&0xff00)>>8;
-			addrLow=fontaddr&0xff;
-			
-			SPI_OLED_get_data_from_ROM(addrHigh,addrMid,addrLow,fontbuf,8);
-			SPI_OLED_Display_5x7(x,y,fontbuf);
-			x+=6;
-			i+=1;
-    }
-		else 
-			i++;
-  }
-}
-
-//显示2个数字
-//x,y :起点坐标
-//num1：要显示的小数
-//len :数字的位数
-/* 本项目修正：原厂这个函数的形参是 float。
- * C51 是模块级链接，只要本文件被链接，这个函数就会被整段链入，
- * 于是 `num1*100` 会把整个浮点库 C51FPL.LIB（?C?FPMUL / ?C?FPDIV / ?C?CASTF ...）拉进来。
- * 规范第二节第三层验证明确要求读 .m51 确认没有这些符号，故改为整数：
- * 形参 num100 = 真实数值 x 100，由调用方自己乘。功能等价。 */
-void SPI_OLED_ShowNum(u8 x,u8 y,u32 num100,u8 len)
-{
-	u8 i;
-	u32 t,num;
-	x=x+len*8+8;//要显示的小数最低位的横坐标
-	num=num100;//调用方已经乘过 100
-	SPI_OLED_Display_GB2312_string(x-24,y,".");//显示小数点
-	for(i=0;i<len;i++)
-	{
-		t=num%10;//取个位数的数值
-		num=num/10;//将整数右移一位
-		x-=8;
-		if(i==2){x-=8;}//当显示出来两个小数之后，空出小数点的位置
-		switch(t)
-		{
-			case 0 :SPI_OLED_Display_GB2312_string(x,y,"0");break;
-			case 1 :SPI_OLED_Display_GB2312_string(x,y,"1");break;
-			case 2 :SPI_OLED_Display_GB2312_string(x,y,"2");break;
-			case 3 :SPI_OLED_Display_GB2312_string(x,y,"3");break;
-			case 4 :SPI_OLED_Display_GB2312_string(x,y,"4");break;
-			case 5 :SPI_OLED_Display_GB2312_string(x,y,"5");break;
-			case 6 :SPI_OLED_Display_GB2312_string(x,y,"6");break;
-			case 7 :SPI_OLED_Display_GB2312_string(x,y,"7");break;
-			case 8 :SPI_OLED_Display_GB2312_string(x,y,"8");break;
-			case 9 :SPI_OLED_Display_GB2312_string(x,y,"9");break;
-		}
-	}
-}
-
 #include "delay.h"
 //SPI_OLED的初始化
 void SPI_OLED_Init(void)
@@ -432,46 +328,12 @@ xdata char SPI_OLED_GRAM[1024]; // 显存
 void SPI_OLED_Refresh()
 {
     u8 x, y;
-    u16 j = 0;
 
     for (y = 0; y < 8; y++) {
         SPI_OLED_address(0, y);
         for (x = 0; x < 128; x++) {
             SPI_OLED_WR_Byte(SPI_OLED_GRAM[y * 128 + x], SPI_OLED_DATA);
         }
-    }
-}
-
-/**
- * @brief 刷新显存的一部分
- *
- * @param xstart 起始横坐标
- * @param ystart 起始纵坐标
- * @param width  宽度
- * @param height 高度，范围0-7
- */
-void SPI_OLED_RefreshPart(u8 xstart, u8 ystart, u8 width, u8 height)
-{
-    u8 x, y;
-
-    for (y = ystart; y < (ystart + height); y++) {
-        SPI_OLED_address(xstart, y);
-        for (x = xstart; x < (xstart + width); x++) {
-            SPI_OLED_WR_Byte(SPI_OLED_GRAM[y * 128 + x], SPI_OLED_DATA);
-        }
-    }
-}
-
-/*
- * @brief 显存全填充
- *
- */
-void SPI_OLED_GFill()
-{
-    u16 i;
-
-    for (i = 0; i < 1024; i++) {
-        SPI_OLED_GRAM[i] = 0xff;
     }
 }
 
@@ -497,7 +359,8 @@ void SPI_OLED_GClear()
 void SPI_OLED_DrawPoint(u8 x, u8 y)
 {
     u8 n, m;
-    if ((x < 0) || (x > 127) || (y < 0) || (y > 63)) return; // 防止超出范围
+    /* x/y 都是 u8，`x < 0` / `y < 0` 恒为假 —— 只判上界即可（第 70 轮去掉两句死判断） */
+    if (x > 127 || y > 63) return; // 防止超出范围
 
     n = y / 8; // n = 0-7
     m = y % 8; // m = 0-7
@@ -514,7 +377,7 @@ void SPI_OLED_DrawPoint(u8 x, u8 y)
 void SPI_OLED_ClearPoint(u8 x, u8 y)
 {
     u8 n, m;
-    if ((x < 0) || (x > 127) || (y < 0) || (y > 63)) return; // 防止超出范围
+    if (x > 127 || y > 63) return; // 防止超出范围（u8 无需判下界）
 
     n = y / 8; // n = 0-7
     m = y % 8; // m = 0-7

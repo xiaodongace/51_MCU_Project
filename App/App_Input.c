@@ -67,11 +67,6 @@ u8 Input_GetEvent(Event_t *evt)
     return 1;
 }
 
-u8 Input_PendingCount(void)
-{
-    return s_count;
-}
-
 void Input_Flush(void)
 {
     s_head  = 0;
@@ -122,17 +117,11 @@ void MK_on_keyup(u8 row, u8 col)
 /*========================================================================
  *                              旋钮（电位器）
  *
- * 【真机修正】原来的映射是"raw 0..4095 -> 档位 0..10"，直接假设电位器的 ADC
- * 读数能覆盖满量程。实机回报：旋到顶只到 6~7 档、旋到底只到 0~1 档，
- * 说明这只电位器的实际 ADC 跨度远小于 4095。
+ * 【量程怎么定的】ADC 满量程不是 4095，而是约 2740（见下面 POT_ADC_FULL 的注释）。
  *
- * 改法：不再假设量程，改为**运行期自学习**：
- *   记录观测到的最小 / 最大原始值，把 [min, max] 线性映射到 0..10 档。
- *   用户把旋钮来回拧到底一次，量程就学好了，之后到底稳定显示 0、到顶稳定显示 10。
- *   这是电位器标定的通用做法，不依赖任何硬件常数（Vref、分压比都不用知道）。
- *
- * 为什么不能靠"把公式调一调"解决：Vref、分压电阻、电位器阻值都是硬件事实，
- * 凭空改常数只是把错误挪个位置。自学习直接绕开这些未知量。
+ * 【第 70 轮清理】这里原来还留着一段"运行期自学习量程"的说明 ——
+ * 那是被推翻的中间方案（要等用户把旋钮拧到底一次才认量程，刚开机不起作用），
+ * 现行代码是固定量程。注释留着两版会误导，删掉旧的那版。
  *========================================================================*/
 
 #define POT_AVG_TIMES   8           /* 连读 8 次取平均 */
@@ -180,28 +169,37 @@ u8 Input_GetPotLevel(void)
     return s_potLevel;
 }
 
+/* 原始 ADC 值 -> 档位（0..POT_LEVELS-1）。
+ * 用 u32 中转：raw 最大 4095，4095 x 101 = 413595 已超 u16。 */
+static u8 pot_level_of(u16 raw)
+{
+    u32 lvl;
+
+    lvl = ((u32)raw * POT_LEVELS) / POT_ADC_FULL;
+    if (lvl >= POT_LEVELS)
+    {
+        lvl = POT_LEVELS - 1;
+    }
+
+    return (u8)lvl;
+}
+
 static void pot_scan(void)
 {
     u16 raw;
+    u16 diff;
     u8  lvl;
 
     raw = pot_read_raw();
+    lvl = pot_level_of(raw);
 
     if (!s_potReady)
     {
         s_potReady = 1;
         s_potMark  = raw;
         /* 首次也把档位算出来，避免开机显示默认值而不是真实位置 */
-        lvl = (u8)(((u32)raw * POT_LEVELS) / POT_ADC_FULL);
-        if (lvl >= POT_LEVELS) lvl = POT_LEVELS - 1;
         s_potLevel = lvl;
         return;
-    }
-
-    lvl = (u8)(((u32)raw * POT_LEVELS) / POT_ADC_FULL);
-    if (lvl >= POT_LEVELS)
-    {
-        lvl = POT_LEVELS - 1;
     }
 
     /* 【2026-09-18 新增 · 时间限流】两次电位器事件之间至少隔 200ms。
@@ -218,32 +216,32 @@ static void pot_scan(void)
         return;
     }
 
-    /* 原始值要真正动过一截才认，避免抖动误触发 */
+    /* 【第 70 轮朴素化】原来这里是"raw > mark"与"mark > raw"两个**完全对称**的分支，
+     * 分支体一字不差（只差减法两个操作数的位置），共 26 行。
+     * 现在先取绝对值得到一个 diff，再统一判断 —— 6 行就够。
+     *
+     * 原始值要真正动过 POT_RAW_STEP 才认，避免抖动误触发。 */
     if (raw > s_potMark)
     {
-        if ((u16)(raw - s_potMark) >= POT_RAW_STEP)
-        {
-            s_potMark = raw;
-            if (lvl != s_potLevel)
-            {
-                s_potLevel = lvl;
-                s_potLastEvtMs = SysTick_Get();
-                evt_push(EVT_POT, s_potLevel);
-            }
-        }
+        diff = (u16)(raw - s_potMark);
     }
-    else if (s_potMark > raw)
+    else
     {
-        if ((u16)(s_potMark - raw) >= POT_RAW_STEP)
-        {
-            s_potMark = raw;
-            if (lvl != s_potLevel)
-            {
-                s_potLevel = lvl;
-                s_potLastEvtMs = SysTick_Get();
-                evt_push(EVT_POT, s_potLevel);
-            }
-        }
+        diff = (u16)(s_potMark - raw);
+    }
+
+    if (diff < POT_RAW_STEP)
+    {
+        return;
+    }
+
+    s_potMark = raw;
+
+    if (lvl != s_potLevel)
+    {
+        s_potLevel     = lvl;
+        s_potLastEvtMs = SysTick_Get();
+        evt_push(EVT_POT, s_potLevel);
     }
 }
 

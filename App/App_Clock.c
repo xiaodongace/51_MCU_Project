@@ -13,11 +13,8 @@
 #include "App_Clock.h"
 
 #include "PCF8563.h"
-#include "I2C_Lock.h"       /* 副屏与时钟芯片共用 I2C，访问前必须拿总线锁 */
+#include "I2C_Lock.h"       /* 总线锁保留作安全网；按方案 B，本模块的 I2C 只被 TASK_RENDER 调用 */
 #include "I2C.h"
-
-/* 已连续失败多少次（成功时清零）。用来只在"刚开始失败"时打印一次，避免刷屏。 */
-static u8 s_failStreak = 0;
 
 /* 待写入芯片的时间（由 Clock_Set 登记，Clock_SetNow 执行） */
 static Clock_t s_pendingClock;
@@ -208,13 +205,9 @@ s8 Clock_Refresh(void)
          * 栈被踩穿，表现就是读到 y=259 mo=93 94:08:07 这类**算术上不可能**的字段值，
          * 以及随后整个系统的状态错乱、最后自动重启。
          *
-         * 所以这里只累加计数，不再打印。诊断信息由低频路径（Clock_Init 打印一次 rst）
-         * 和 TASK_SENSOR 提供，1 秒级热路径里绝不放 printf。 */
-        s_failStreak++;
+         * 所以这里连计数也不做——1 秒级热路径里绝不放 printf。 */
         return rst;
     }
-
-    s_failStreak = 0;
 
     /* 星期不信芯片，自己算 */
     c.week = Clock_WeekdayOf(c.year, c.month, c.day);
@@ -270,56 +263,6 @@ u16 Clock_MinutesOfDay(u8 hour, u8 minute)
     return (u16)((u16)hour * 60U + minute);
 }
 
-void Clock_AddSeconds(Clock_t *t, u16 sec)
-{
-    u16 total;
-    u8  dim;
-
-    if (t == NULL)
-    {
-        return;
-    }
-
-    /* 简化实现：把它当成"秒累加 + 逐级进位"，够番茄钟和贪睡用 */
-    total = (u16)(t->second + (sec % 60U));
-    t->second = (u8)(total % 60U);
-    {
-        u16 carryMin = (u16)((sec / 60U) + (total / 60U));
-        u16 totalMin = (u16)(t->minute + carryMin);
-
-        t->minute = (u8)(totalMin % 60U);
-        {
-            u16 carryHour = (u16)(totalMin / 60U);
-            u16 totalHour = (u16)(t->hour + carryHour);
-
-            t->hour = (u8)(totalHour % 24U);
-            {
-                u16 carryDay = (u16)(totalHour / 24U);
-
-                if (carryDay > 0)
-                {
-                    t->day = (u8)(t->day + carryDay);
-                    dim = Clock_DaysInMonth(t->year, t->month);
-
-                    while (t->day > dim)
-                    {
-                        t->day = (u8)(t->day - dim);
-                        t->month++;
-                        if (t->month > 12)
-                        {
-                            t->month = 1;
-                            t->year++;
-                        }
-                        dim = Clock_DaysInMonth(t->year, t->month);
-                    }
-                }
-            }
-        }
-    }
-
-    t->week = Clock_WeekdayOf(t->year, t->month, t->day);
-}
-
 void Clock_Init(void)
 {
     u8 i;
@@ -337,7 +280,7 @@ void Clock_Init(void)
      * 没有任何等待，等于三次都在同一个时刻试，自然一起失败。
      * 按重启按钮之所以有效，是因为那时电源早已稳定。
      *
-     * 现在改成 5 次、每次间隔 100ms（共约 500ms 窗口），
+     * 现在改成 8 次、每次间隔 100ms（共约 800ms 窗口），
      * 给芯片留出稳定的时间。 */
     rst = -1;
     for (i = 0; i < 8; i++)
@@ -386,25 +329,15 @@ void Clock_Init(void)
         g_clock.week   = Clock_WeekdayOf(2026, 1, 1);
 
         Clock_Set(&g_clock);
-
-        if (Clock_IsValid())
-        {
-        }
-        else
-        {
-            s_valid = 0;
-        }
-
-        s_failStreak = 0;       /* 让每秒的失败重新从第 1 次开始报 */
     }
 }
 
 /*
  * 时钟没起来时的自救。
  *
- * 场景：USB 刚插上时 PCF8563 可能还没稳定，Clock_Init() 的 5 次重试也可能全落空，
+ * 场景：USB 刚插上时 PCF8563 可能还没稳定，Clock_Init() 的 8 次重试也可能全落空，
  * 这时系统就没有时间基准了（时间静止、闹钟不会响）。
- * 由 Menu_Tick1s() 每秒调用，每 5 秒真正尝试一次，最多 10 次。
+ * 由 Menu_Tick1s() 每秒调用，每 5 秒真正尝试一次，最多 60 次。
  * 成功了就自动恢复，不需要用户按重启按钮。
  */
 void Clock_TryRecover(void)

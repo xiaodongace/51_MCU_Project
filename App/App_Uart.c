@@ -35,9 +35,6 @@ static u8  s_pos     = 0;
 static u8  s_sum     = 0;
 static u8 xdata s_body[RX_FRAME_MAX];
 
-static u16 s_frames  = 0;
-static u16 s_errors  = 0;
-
 /*========================================================================
  *                              发送
  *========================================================================*/
@@ -128,8 +125,11 @@ static void cmd_execute(u8 cmd, const u8 *d, u8 len)
         g_clock.hour   = d[4];
         g_clock.minute = d[5];
         g_clock.second = d[6];
-        Clock_Set(&g_clock);            /* 写芯片 + 立刻回读 */
-        Alarm_ApplyHardware();          /* 时间变了，硬件闹钟要重算 */
+        Clock_Set(&g_clock);            /* 只登记；TASK_RENDER 会写芯片 + 回读 */
+        /* 【第 70 轮删】这里原来还有一句 Alarm_ApplyHardware()。
+         * 它是多余的：Clock_Set() 已经把 g_reqClockSet 置 1，而 TASK_RENDER 的
+         * Display_Poll 在处理 g_reqClockSet 时本来就紧跟一句 Alarm_ApplyHardwareNow()
+         * —— 再多调一次只会让硬件闹钟被白写两遍（多一份 I2C 流量）。 */
         send_ack(cmd, Clock_IsValid() ? UC_OK : UC_FAIL);
         break;
 
@@ -302,7 +302,6 @@ static void feed_byte(u8 b)
     case ST_LEN:
         if (b == 0 || b > RX_FRAME_MAX)
         {
-            s_errors++;
             s_state = ST_HEAD1;
             break;
         }
@@ -329,13 +328,9 @@ static void feed_byte(u8 b)
             u8 cmd = s_body[0];
             u8 dlen = (u8)(s_len - 1);
 
-            s_frames++;
             cmd_execute(cmd, &s_body[1], dlen);
         }
-        else
-        {
-            s_errors++;
-        }
+        /* 校验不过：帧直接丢掉，不额外记账（原来记 s_errors，无读者已删） */
         s_state = ST_HEAD1;
         break;
 
@@ -351,8 +346,6 @@ void Uart_Init(void)
     s_len   = 0;
     s_pos   = 0;
     s_sum   = 0;
-    s_frames = 0;
-    s_errors = 0;
 }
 
 /*
@@ -393,14 +386,4 @@ void Uart_Poll(void)
         RX1_Buffer[i] = RX1_Buffer[n + i];
     }
     COM1.RX_Cnt = left;
-}
-
-u16 Uart_FrameCount(void)
-{
-    return s_frames;
-}
-
-u16 Uart_ErrorCount(void)
-{
-    return s_errors;
 }

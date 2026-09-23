@@ -159,13 +159,11 @@ u8 DHT11_Read(s16 *tempX10, u8 *humi)
                 return DHT11_ERR_DATA_HIGH;
             }
 
+            /* highCnt <= lowCnt 时这一位就是 0；dat[] 初值已清零，不用动。
+             * （第 70 轮：原来这里挂了一个空的 else 块） */
             if (highCnt > lowCnt)
             {
                 dat[i] |= (u8)(1 << j);
-            }
-            else
-            {
-                /* 已经是 0，不用动 */
             }
         }
     }

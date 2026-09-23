@@ -8,7 +8,7 @@
  *
  * 0 号区布局（512 字节内）：
  *   偏移 0    : Settings_t
- *   偏移 20   : AlarmItem_t[8]（每组 5 字节，共 40 字节）
+ *   偏移 20   : AlarmItem_t[ALARM_MAX]（每组 5 字节；当前 3 组 = 15 字节）
  *   其余      : 保留
  *
  * 记录区（2..7 号区）：
@@ -22,26 +22,9 @@
 #define OFF_SETTINGS    0
 #define OFF_ALARMS      20
 
-/* 先擦页、再写一页的完整内容。EEPROM_write_n 内部会逐字节触发 IAP。 */
-static u8 ee_write_page(u16 addr, u8 *buf, u16 len)
-{
-    EEPROM_SectorErase(addr);
-    EEPROM_write_n(addr, buf, len);
-    return ST_OK;
-}
-
-/* 只写、不擦（用于往已擦除区追加记录） */
-static u8 ee_write(u16 addr, u8 *buf, u16 len)
-{
-    EEPROM_write_n(addr, buf, len);
-    return ST_OK;
-}
-
-static u8 ee_read(u16 addr, u8 *buf, u16 len)
-{
-    EEPROM_read_n(addr, buf, len);
-    return ST_OK;
-}
+/* 【第 70 轮清理】这里原有 ee_write_page / ee_write / ee_read 三个包装函数，
+ * 函数体只有一句"调用 EEPROM_xxx 然后 return ST_OK" —— 返回值是写死的常量，
+ * 调用方也从来没检查过它。属于"多一层什么都没做的抽象"，直接调用底层更清楚。 */
 
 /*========================================================================
  *                              默认值
@@ -90,7 +73,7 @@ void Storage_Default(void)
 
 /*
  * 0 号区的镜像缓冲。
- * 放 xdata：Settings_t + 8 x AlarmItem_t 约 60 字节，
+ * 放 xdata：Settings_t + 3 x AlarmItem_t 约 35 字节，
  * 本项目用 Compact 内存模型，默认变量进 pdata（256 字节），
  * 大一点的结构显式放 xdata 更稳妥。
  */
@@ -130,8 +113,11 @@ u8 Storage_SaveAll(void)
         s_page0[OFF_ALARMS + i * 5 + 4] = g_alarms[i].song;
     }
 
-    /* 2) 一次擦除 + 一次写回。只写这 60 字节，不必写满 512。 */
-    ee_write_page(EE_SETTINGS, s_page0, OFF_ALARMS + ALARM_MAX * 5);
+    /* 2) 一次擦除 + 一次写回。只写 OFF_ALARMS + 3*5 = 35 字节，不必写满 512。
+     *    EEPROM_write_n 内部会逐字节触发 IAP。先在内存里备好整页再擦，
+     *    避免"擦了没写"的窗口（《04》B 角色注意事项）。 */
+    EEPROM_SectorErase(EE_SETTINGS);
+    EEPROM_write_n(EE_SETTINGS, s_page0, (u16)(OFF_ALARMS + ALARM_MAX * 5));
 
     return ST_OK;
 }
@@ -141,7 +127,7 @@ u8 Storage_Load(void)
     u8 i;
     u8 ok;
 
-    ee_read(EE_SETTINGS, s_page0, OFF_ALARMS + ALARM_MAX * 5);
+    EEPROM_read_n(EE_SETTINGS, s_page0, (u16)(OFF_ALARMS + ALARM_MAX * 5));
 
     g_settings.magic         = (u16)s_page0[0] | ((u16)s_page0[1] << 8);
     g_settings.version       = s_page0[2];
@@ -156,7 +142,11 @@ u8 Storage_Load(void)
     g_settings.logCount      = (u16)s_page0[11] | ((u16)s_page0[12] << 8);
     g_settings.vibrate       = s_page0[13];
 
-    for (i = 0; i < 4; i++)
+    /* 【第 70 轮修 · 越界写】reserved 只有 3 个字节（App_Public.h 的 Settings_t），
+     * 这里原来写 i < 4 —— 第 4 次循环写的是 g_settings 之后紧邻的那一个字节，
+     * 属于"静默踩到别的全局量"。Storage_Default() 里写的是 i < 3，两边本来就不一致，
+     * 以结构体尺寸为准，改成 3。 */
+    for (i = 0; i < 3; i++)
     {
         g_settings.reserved[i] = 0;
     }
@@ -271,7 +261,7 @@ u8 Storage_AppendLog(s8 temp, u8 humi)
     buf[0] = (u8)((s16)temp + 100);
     buf[1] = humi;
 
-    ee_write(addr, buf, 2);
+    EEPROM_write_n(addr, buf, 2);       /* 记录区已擦除，直接按字节写 */
 
     g_settings.logCount++;
 
@@ -297,7 +287,7 @@ u8 Storage_ReadLog(u16 idx, s8 *temp, u8 *humi)
     }
 
     addr = log_addr(idx);
-    ee_read(addr, buf, 2);
+    EEPROM_read_n(addr, buf, 2);
 
     if (buf[1] == 0xFF)
     {

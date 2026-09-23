@@ -25,9 +25,6 @@ Brick brickList[20];
 u8 brickScore = 0;
 u8 brickLives = 3;
 
-/* 绝对值函数宏 */
-#define ABS(x) ((x) < 0 ? -(x) : (x))
-
 /**
  * @brief 初始化游戏
  */

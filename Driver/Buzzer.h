@@ -24,7 +24,7 @@ sbit BUZZER = P0 ^ 0;
  */
 #define BUZZER_DUTY_MAX_PCT  50
 
-/* 音量的满档值：旋钮给 0..10，10 对应 BUZZER_DUTY_MAX_PCT */
+/* 音量的满档值：音量是 0..100 的百分比，100 对应 BUZZER_DUTY_MAX_PCT */
 #define BUZZER_VOLUME_FULL   100  /* 音量改为百分比 0..100（第 7 点）*/
 
 /*
@@ -58,7 +58,7 @@ void Buzzer_SafeLevel(void);
 void Buzzer_Init(void);
 
 /*
- * 按指定频率发声，volume 取 0..10。
+ * 按指定频率发声，volume 取 0..100（百分比）。
  * volume = 0 等价于 Buzzer_Stop()。
  * 内部顺序（《04》要求）：先关输出 -> 改频率 -> 改占空比 -> 再开输出，避免换音时"啪"的爆音。
  */
@@ -66,11 +66,6 @@ void Buzzer_Play(u16 hz_value, u8 volume);
 
 /* 停止发声 */
 void Buzzer_Stop(void);
-
-/* 查询蜂鸣器总开关是否打开（= BUZZER_ENABLE）。
- * 给 App 层用：蜂鸣器关掉时，"按 KEY2 确认"的 100ms 反馈要退回用马达给，
- * 否则用户按了没有任何回应。驱动层不做策略，只把这个事实暴露出来。 */
-u8 Buzzer_IsEnabled(void);
 
 /* 音阶索引 1..21 -> 频率（Hz）。0 或越界返回 0 */
 u16 Buzzer_Freq(u8 tone);

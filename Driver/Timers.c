@@ -52,8 +52,3 @@ void Timers_Init(void)
     /* 打开 Timer3 中断：之后 Timer3_ISR_Handler 每 1ms 把 g_sysTick 拨一格 */
     NVIC_Timer3_Init(ENABLE, Priority_0);
 }
-
-u32 Timers_GetSystemMs(void)
-{
-    return SysTick_Get();
-}

@@ -24,9 +24,6 @@ void Input_Scan10ms(void);
 /* 取一条事件。返回 1 表示取到，0 表示队列为空 */
 u8 Input_GetEvent(Event_t *evt);
 
-/* 队列里当前待处理的事件条数（调试用） */
-u8 Input_PendingCount(void);
-
 /* 清空队列（切页面时用，避免旧事件串到新页面） */
 void Input_Flush(void);
 

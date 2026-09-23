@@ -2,13 +2,15 @@
  * App_Display.c - 两块屏幕的绘制（TASK_RENDER，5ms 一拍）
  *
  * 只读别人的数据（g_clock / g_settings / g_alarms / 传感器全局量），不改任何人。
- * 副屏走 I2C，访问前先申请总线锁（《02》3.3 的"走廊通行权"）。
+ * 副屏走 I2C。**全工程所有 I2C 访问都收在本文件这一个任务里串行执行**（方案 B，
+ * 见 App_Public.h 的 g_req* 标志说明）—— 串行就不会有总线争用，
+ * I2C_Lock 保留下来只作安全网。
  */
 #include "App_Display.h"
 
 #include "spi_oled.h"       /* 主屏：SPI，带硬件字库，可显示汉字 */
 #include "I2C_OLED.h"       /* 副屏：demo30 原生驱动，自包含软件 I2C */
-#include "I2C.h"            /* I2C 底层（副屏批量写试验已回退，保留声明备用） */
+#include "I2C.h"            /* I2C 底层：sub_blit / gauge_flush / I2C_OLED_Clear 的批量写都走它 */
 #include "App_Clock.h"
 #include "App_Menu.h"   /* Menu_IsOpen/菜单表：主屏任务清单的唯一来源 */
 #include "App_Input.h"   /* Input_GetPotLevel：副屏显示实时旋钮档位 */
@@ -84,7 +86,8 @@ static u16 s_envTimer    = 0;
 
 static u8 s_mainOn = 1;
 
-/* 前置声明：C51 不允许调用"后面才定义"的函数，必须先声明。 */
+/* 整屏重画限流用的状态（函数的前置声明在下面 main_draw_* 那一节之前，
+ * 不是这里 —— 这里原来那句"前置声明"的注释挂错了地方，第 70 轮归位）。 */
 
 static u32 s_lastFullExecMs = 0;   /* 上一次真正执行整屏重画的时刻（执行点限流） */
 
@@ -214,6 +217,7 @@ static void main_draw_settings(void);
  * 临时声明一次；后面真正的定义是 `static void`，两者冲突 -> 报"重定义"。
  * （main_draw_settings 一直没事，就是因为它有上面这行前置声明。） */
 static void main_draw_range(void);
+static void main_draw_gimbal(void);
 
 /* 【掌机模式】两个版面的前置声明（定义在文件后面）。
  * 必须声明 —— C51 是先调用后定义会报 C231 "redefinition"
@@ -243,6 +247,28 @@ static void main_draw_bigtime(void)
 
     spi_draw_digit32(x, MAIN_BIG_Y, (u8)(mm % 10));
 }
+/*========================================================================
+ *                  云台版面（任务「5 云台」）
+ *
+ *  【2026-09-23 新增】原来这一页**没有专门版面** —— main_redraw 里没有
+ *  PAGE_SERVO 分支，于是主屏落到最后那句 main_draw_menu()，显示的其实是
+ *  任务清单。用户要求"进入舵机任务后 SPI 显示要接的引脚"，因此补上这一页。
+ *
+ *  主屏只显示一行：`PWM 接 P2.5`（用户 2026-09-23 定的版面）。
+ *  角度在副屏的半圆仪表盘上看，主屏不显示。
+ *
+ *  ※ 后三行也必须显式写空 —— 见 main_draw_range 里的同一说明。
+ *  ※ 舵机供电（几百 mA 级、别从板子 5V 取电）写在了《使用说明》第 2 节，
+ *    屏上不显示（用户要求这一页"只显示"引脚）。
+ *========================================================================*/
+static void main_draw_gimbal(void)
+{
+    main_draw_line_fit(0, (char *)"PWM 接 P2.5");
+    main_draw_line_fit(2, (char *)"");
+    main_draw_line_fit(4, (char *)"");
+    main_draw_line_fit(6, (char *)"");
+}
+
 
 /* 星期汉字。用 switch 返回字面量，不用"字符指针数组"——
  * 汉字在 GBK 下是 2 字节，用定宽二维数组很容易算错大小，
@@ -457,11 +483,19 @@ static void main_redraw(u8 doClear)
         return;
     }
 
-    /* 【测距仪】主屏只显示任务名 + 一行提示（距离在副屏）。
+    /* 【测距仪】主屏只显示超声波的两根信号线（距离在副屏）。
      * 自带版面、4 行全写满 —— 见 main_draw_range 的说明。 */
     if (s_page == PAGE_RANGE)
     {
         main_draw_range();
+        return;
+    }
+
+    /* 【云台】主屏只显示舵机信号线的引脚；副屏显示半圆仪表盘与角度。
+     * 见 main_draw_gimbal 的说明。 */
+    if (s_page == PAGE_SERVO)
+    {
+        main_draw_gimbal();
         return;
     }
 
@@ -512,31 +546,18 @@ static void main_redraw(u8 doClear)
  *  画副屏一行 16 像素高的 ASCII。line 取 0..3，对应页 0/2/4/6。
  *
  *  【为什么必须固定宽度】
- *    本函数的刷新粒度是"只重画变化的那一行"，一次只写这一行、不做整行清屏。
- *    如果新字符串比上一帧短，旧内容的尾巴会留在屏幕上：
- *      真机现象 VOL 从 "VOL 10/10 SONG 1"(15字) 降到 "VOL 0/10 SONG 1"(14字)，
- *      显示成 "VOL 0/10 SONG 11" —— 多出来那个 1 就是上一帧的残留。
- *    所以统一补到 16 个字符 = 128 列满宽，超长则截断；
- *    每行写入都正好覆盖整行，不会留尾巴。
+ *    本函数的刷新粒度是"只重画变化的那一行"，不做整行清屏。新字符串比上一帧
+ *    短的话，旧内容的尾巴会留在屏上 —— 实测 VOL 从 "VOL 10/10 SONG 1" 降到
+ *    "VOL 0/10 SONG 1" 之后显示成 "VOL 0/10 SONG 11"。
+ *    所以一律补到 16 个字符 = 128 列满宽（照 demo30 的固定宽度做法），超长截断。
  *
- *  【为什么是逐字节写、不是批量写】
- *    2026-09-18 试过"整页一次事务批量写"，实机副屏整屏乱码、按键无响应，已回退。
- *    现在的批量写只用在两处**已验证**的地方：sub_blit()（图标）和 gauge_flush()（仪表盘），
- *    它们都是"整页全量覆盖"；文字行长度可变，走逐字节这条稳的路。
+ *  【为什么这一行走逐字节写、不用批量写】
+ *    2026-09-18 试过"整页一次事务批量写"，实机副屏整屏乱码、按键无响应。
+ *    所以文字行稳妥地逐字节写；批量写只用在"整页全量覆盖"的地方
+ *    （sub_blit 的图标、gauge_flush 的仪表盘、I2C_OLED_Clear 的清屏）。
  *------------------------------------------------------------------------*/
 static void sub_draw_line(u8 line, const char *s)
 {
-    /* 【2026-09-19 修正 · 必须固定宽度】
-     *
-     * 现在副屏的刷新粒度是"只重画变化的那一行"（照 demo30），
-     * **一次只写这一行、不做整行清屏**。如果新字符串比上一帧短，
-     * 旧内容的尾巴就会留在屏幕上：
-     *   真机现象：VOL 从 "VOL 10/10 SONG 1"(15 字) 降到 "VOL 0/10 SONG 1"(14 字) 后
-     *             显示成 "VOL 0/10 SONG 11" —— 多出来的那个 1 就是上一帧的残留。
-     *
-     * demo30 的做法就是固定宽度：`sprintf(strbuff,"Duty:%6.2f%%",...)`（宽度写死）、
-     * `"Temp :    C"`（手动补空格）。这里照做：统一补到 16 个字符 = 128 列满宽，
-     * 超长则截断。这样每行写入都正好覆盖整行，不会留尾巴。 */
     char padded[18];
     u8 n;
     u8 i;
@@ -559,28 +580,6 @@ static void sub_draw_line(u8 line, const char *s)
     I2C_Lock();
     I2C_OLED_ShowString(0, (u8)(line * 2), (u8 *)padded, 16);
     I2C_Unlock();
-}
-
-static const char *page_name(UIPageId_t p)
-{
-    switch (p)
-    {
-    case PAGE_HOME:        return "CLOCK";
-    case PAGE_ALARM_LIST:  return "ALARM LIST";
-    case PAGE_ALARM_EDIT:  return "ALARM EDIT";
-    case PAGE_POMODORO:    return "POMODORO";
-    case PAGE_SETTINGS:    return "SETTINGS";
-    case PAGE_RINGING:     return "*** RING ***";
-    case PAGE_RANGE:       return "RANGE";
-    case PAGE_SERVO:       return "GIMBAL";
-    case PAGE_GAME_HALL:   return "GAME";
-    /* 【2026-09-22 清理】原来还有 5 个游戏子页 ID
-     * （PAGE_GAME_SNAKE / BRICK / PLANE / DAILY / OVER）。
-     * 掌机模式改成"「7 游戏」页内两状态"之后（见 App_Menu.c 的 Game_Poll），
-     * 这 5 个页面 ID 全工程再无引用 —— 游戏画什么由游戏自己的 Draw() 决定，
-     * 不再需要按页面 ID 分派。所以连枚举带这里的 case 一起删了。 */
-    default:               return "?";
-    }
 }
 
 /*========================================================================
@@ -882,14 +881,17 @@ static void sub_draw_icon(void)
     }
 }
 
-/* 把第 4 行（最后一行）的内容写进 buf。
- * 单独抽出来是为了让"只刷一行"（s_line3Dirty）能复用同一套优先级逻辑。 */
 /*========================================================================
- *                              对外接口
+ *  几段说明（第 70 轮清理）
+ *
+ *  这里原来钉着三块**悬空注释**：
+ *    · "把第 4 行写进 buf …（s_line3Dirty）"     -- s_line3Dirty 与 sub_build_line3()
+ *                                                   第 40 轮就删了
+ *    · "对外接口" 标题                            -- 真正的对外接口在文件末尾
+ *    · "只请求重画云台仪表盘 … 转针要跟手"        -- Display_RequestGauge() 第 50 轮删了
+ *  （收敛成 Display_Refresh(clear) 一个入口 + s_needRedraw/s_needClear 一对标志。）
+ *  留着会让人以为还有这些接口，一并删掉。
  *========================================================================*/
-
-/* 只请求重画云台仪表盘（半圆 + 粗针 + 角度行）。
- * 一次约 256 字节 ≈ 85ms，同样不受整屏限流约束 —— 转针要跟手。 */
 /*========================================================================
  *          闹钟页版面 —— 任务清单第 4 点
  *
@@ -1304,7 +1306,6 @@ static void main_draw_settings(void)
     }
 }
 
-/* 副屏：只显示"当前这一项"的功能内容 */
 /*========================================================================
  *                  测距仪版面（任务「4 测距仪」）
  *
@@ -1313,9 +1314,9 @@ static void main_draw_settings(void)
  *  改前的分工是"主屏也显示距离 + 第 4 行显示 RAW"，两屏信息重复。
  *
  *  主屏（SPI，4 行，页号 0/2/4/6）：        副屏（I2C，4 行）：
- *      测距仪                                  DISTANCE
- *      (空行)                                  123 cm
- *      距离见副屏                              [####......]
+ *      TRIG 接 P2.4                            DISTANCE
+ *      ECHO 接 P3.6                            123 cm
+ *      (空行)                                  [####......]
  *      (空行)                                  RANGE 2-400cm
  *
  *  两屏都写满 4 行 —— 这是"不清屏只重画行"的前提
@@ -1324,13 +1325,16 @@ static void main_draw_settings(void)
  *  所以实际每 150ms 被重画的只有副屏的第 2、3 行。
  *========================================================================*/
 
-/* 主屏：4 行全写满，但**不含距离值**（用户要求距离只出现在副屏）。
- * main_draw_line_fit 会把每行补满到整屏宽，所以换页时不会留下残字。 */
+/* 主屏：**只显示超声波要接的两根信号线**（用户 2026-09-23 定的版面）。
+ *
+ *  · 距离不在这里 —— 只在副屏显示；
+ *  · 后两行也必须显式写空：`main_draw_line_fit` 是"不清屏、按行覆盖"刷新，
+ *    空行不写就会留着上一页的残字（本文件顶部那条铁律）。 */
 static void main_draw_range(void)
 {
-    main_draw_line_fit(0, (char *)"测距仪");
-    main_draw_line_fit(2, (char *)"");
-    main_draw_line_fit(4, (char *)"距离见副屏");
+    main_draw_line_fit(0, (char *)"TRIG 接 P2.4");
+    main_draw_line_fit(2, (char *)"ECHO 接 P3.6");
+    main_draw_line_fit(4, (char *)"");
     main_draw_line_fit(6, (char *)"");
 }
 
@@ -1637,12 +1641,13 @@ void Display_MainPower(u8 on)
 
 void Display_Init(void)
 {
-    /* ---- 主屏 ---- */
-    SPI_OLED_Init();
-
-
-    SPI_OLED_ColorTurn(0);
-    SPI_OLED_DisplayTurn(0);
+    /* ---- 主屏 ----
+     * 【第 70 轮清理】这里原来是 SPI_OLED_Init() + ColorTurn + DisplayTurn 三连，
+     * 与 sys_init() 第 3.5 步**完全重复**：那一步里已经初始化过 SPI 屏（包括那
+     * 6 根线配推挽、0xAE..0xAF 一整套命令、以及内部 os_wait2(K_TMO,40) 的 200ms 等待），
+     * 之后还跑完了开机动画。本函数由 TASK_RENDER 调用，一定晚于 sys_init()。
+     * 再初始化一次只是白等 200ms + 多清一次屏，屏上就是"黑一下"。
+     * 这里只留一次清屏作为保险，页面内容交给紧随其后的 Display_Refresh(1)。 */
     SPI_OLED_Clear();
 
     /* 主屏初始化完成立刻写一行测试文字：

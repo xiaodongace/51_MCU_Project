@@ -10,7 +10,6 @@
  *                这是《02-技术方案》3.2 明确写下的取舍。
  */
 #include "Motor.h"
-#include <stdio.h>
 #include "GPIO.h"
 #include "Switch.h"         /* PWM6_SW / PWM6_SW_P01 在这里 */
 #include "NVIC.h"           /* NVIC_PWM_Init 在这里 */
@@ -177,9 +176,4 @@ void Motor_Tick(void)
         s_vibrating = 0;
         Motor_Off();
     }
-}
-
-u8 Motor_IsOn(void)
-{
-    return s_motorOn;
 }

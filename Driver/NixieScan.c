@@ -57,13 +57,6 @@ void Nixie_ScanInit(void)
     s_running = 1;
 }
 
-void Nixie_ScanStop(void)
-{
-    s_running = 0;
-    Timer2_Run(DISABLE);
-    NIXIE_show(0xFF, 0x00);
-}
-
 /* pos 是"逻辑位号"，0 表示最左边。物理位号由 NIXIE_POS_REVERSED 决定 */
 static u8 phys_pos(u8 pos)
 {
@@ -72,36 +65,6 @@ static u8 phys_pos(u8 pos)
 #else
     return pos;
 #endif
-}
-
-void Nixie_SetDigit(u8 pos, u8 numId)
-{
-    if (pos >= NIXIE_DIGITS)
-    {
-        return;
-    }
-
-    s_buf[pos] = numId;
-}
-
-void Nixie_SetBuffer(const u8 *buf)
-{
-    u8 i;
-
-    for (i = 0; i < NIXIE_DIGITS; i++)
-    {
-        s_buf[i] = buf[i];
-    }
-}
-
-void Nixie_Clear(void)
-{
-    u8 i;
-
-    for (i = 0; i < NIXIE_DIGITS; i++)
-    {
-        s_buf[i] = NIXIE_CH_BLANK;
-    }
 }
 
 void Nixie_SetTime(u8 hour, u8 minute, u8 second)

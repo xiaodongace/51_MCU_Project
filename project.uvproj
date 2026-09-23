@@ -497,6 +497,11 @@
               <FilePath>.\App\App_Display.c</FilePath>
             </File>
             <File>
+              <FileName>App_Icons.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\App\App_Icons.h</FilePath>
+            </File>
+            <File>
               <FileName>App_Icons.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\App\App_Icons.c</FilePath>
@@ -682,9 +687,19 @@
               <FilePath>.\Driver\Motor.c</FilePath>
             </File>
             <File>
+              <FileName>Servo.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\Servo.h</FilePath>
+            </File>
+            <File>
               <FileName>Servo.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Driver\Servo.c</FilePath>
+            </File>
+            <File>
+              <FileName>HC_SR04.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Driver\HC_SR04.h</FilePath>
             </File>
             <File>
               <FileName>HC_SR04.c</FileName>

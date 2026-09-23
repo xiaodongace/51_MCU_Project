@@ -49,9 +49,6 @@ u8 Clock_MaskToWeek(u8 mask);
 /* 某年某月的天数（用于日期加减与合法性检查） */
 u8 Clock_DaysInMonth(u16 year, u8 month);
 
-/* 把 time 往后推 1 秒（用于番茄钟、贪睡这类"相对时间"推算） */
-void Clock_AddSeconds(Clock_t *t, u16 sec);
-
 /* 把 24 小时制时分转成"当天第几分钟" */
 u16 Clock_MinutesOfDay(u8 hour, u8 minute);
 

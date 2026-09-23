@@ -29,7 +29,4 @@ u8 I2C_TryLock(void);
 /* 释放总线 */
 void I2C_Unlock(void);
 
-/* 当前是否被占用（调试用） */
-u8 I2C_IsLocked(void);
-
 #endif

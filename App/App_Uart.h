@@ -49,10 +49,4 @@ void Uart_Init(void);
  */
 void Uart_Poll(void);
 
-/* 已解析并执行的帧数（调试用） */
-u16 Uart_FrameCount(void);
-
-/* 校验失败 / 帧错误的次数（调试用） */
-u16 Uart_ErrorCount(void);
-
 #endif

@@ -97,7 +97,12 @@ void Buzzer_Play(u16 hz_value, u8 volume)
         return;
     }
 
-    period = (u16)(MAIN_Fosc / hz_value);       /* 频率过低时周期会溢出 16 位，故限制下限 */
+    period = (u16)(MAIN_Fosc / hz_value);
+    /* ※ 原来这里的注释写"频率过低时周期会溢出 16 位，故限制下限"，
+     *   但代码里**从来没有下限检查**。实际的下限由调用方保证：
+     *     · Buzzer_Freq() 只返回 FREQS[] 里的值（523..3951）；
+     *     · 提示音用宏 BUZZER_BEEP_HZ(1047)。
+     *   hz_value==0 在上面已经被挡掉了。注释按事实改写。 */
 
     if (volume > BUZZER_VOLUME_FULL)
     {
@@ -126,11 +131,6 @@ void Buzzer_Play(u16 hz_value, u8 volume)
     /* 4) 再打开输出 */
     PWMB_CC5E_Enable();
 #endif      /* BUZZER_ENABLE */
-}
-
-u8 Buzzer_IsEnabled(void)
-{
-    return (u8)BUZZER_ENABLE;
 }
 
 void Buzzer_Stop(void)

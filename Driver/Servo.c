@@ -3,7 +3,6 @@
  * 真值与取舍理由见 Servo.h 顶部注释。
  */
 #include "Servo.h"
-#include <stdio.h>
 #include "GPIO.h"
 #include "Switch.h"
 #include "NVIC.h"

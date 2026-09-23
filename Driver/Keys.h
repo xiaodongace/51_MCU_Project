@@ -41,9 +41,6 @@ void Keys_Init(void);
 /* 扫描：由 TASK_INPUT 每 10ms 调用一次。非阻塞。 */
 void Keys_Scan(void);
 
-/* 查询某键当前是否按下（消抖后的稳定状态），key = 0..3 */
-u8 Keys_IsPressed(u8 key);
-
 /*
  * 以下三个回调由 App 层（App_Input.c）实现。
  * key 取 0..3，分别对应 KEY1..KEY4。

@@ -1,14 +1,11 @@
 /*
  * App_System.c - 系统初始化
  *
- * 配置序列逐字对齐 v3.1 App/App_System.c：
- *   EAXSFR() -> GPIO_config() -> UART_config() -> I2C_config() -> ADC_config()
- *   -> Buzzer_init() -> EA = 1 -> 之间会一直震。
- *
+ * 本文件只做三件事：
+ *   1) sys_init()：按固定顺序把全系统拉起来（见函数里的分步说明）；
  *   2) 各外设的 IO 模式由各自的驱动 init 负责（江文聪老师封装驱动的做法），
- *      App_System 只补一个旋钮 ADC 输入口 P0.5。
- *
- *   3) 启动数码管扫描（Nixie_ScanInit）。
+ *      App_System 只补一个旋钮 ADC 输入口 P0.5；
+ *   3) Boot_Crumb()：上电进度指示（BOOT_CRUMB_ENABLE 控制的诊断手段）。
  *
  * ── 本次真机联调的两处关键调整 ──────────────────────────────────────
  *

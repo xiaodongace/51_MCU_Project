@@ -108,13 +108,3 @@ void Keys_Scan(void)
         }
     }
 }
-
-u8 Keys_IsPressed(u8 key)
-{
-    if (key >= KEY_COUNT)
-    {
-        return 0;
-    }
-
-    return (s_stable[key] == KEY_LEVEL_DOWN) ? 1 : 0;
-}

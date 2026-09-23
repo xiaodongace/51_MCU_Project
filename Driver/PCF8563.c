@@ -10,7 +10,6 @@
  * 因为 I2C 总线要和副屏共用，不能在中断里抢。 */
 volatile bit g_rtcIrqFlag = 0;
 
-#define I2C_SOFT    0
 #define I2C_WRITE   I2C_WriteNbyte
 #define I2C_READ    I2C_ReadNbyte
 
@@ -27,7 +26,8 @@ static void GPIO_config(void) {
 }
 
 /******************** INT配置 ********************/
-void	Exti_config(void)
+/* 只在本文件的 PCF8563_init() 里用 -> 收成 static（第 70 轮） */
+static void	Exti_config(void)
 {
     EXTI_InitTypeDef	Exti_InitStructure;					//结构定义
     Exti_InitStructure.EXTI_Mode      = EXT_MODE_Fall;  //中断模式,   EXT_MODE_RiseFall,EXT_MODE_Fall
@@ -161,57 +161,6 @@ void PCF8563_enable_alarm(u8 enable){
         cs2 &=  ~( 1 << 1 );   
     }
     
-    I2C_WRITE(PCF8563_ADDR, 0x01, &cs2, 1);
-}
-
-// 清理闹铃标记
-void PCF8563_clear_alarm(){
-    u8 cs2 = 0;
-//    4. 配置控制寄存器2, CS2 , AF=0, AIE=1启用闹铃
-    I2C_READ(PCF8563_ADDR, 0x01, &cs2, 1);
-    // AF  -> 清理Alarm标记 Bit3 Alarm Flag 清0  确保闹铃可以触发
-    cs2 &= ~( 1 << 3 );
-    // 将CS2配置信息写到PCF8563的0x01开始的1个寄存器
-    I2C_WRITE(PCF8563_ADDR, 0x01, &cs2, 1);
-}
-
-// 设置定时器(频率 & 计数值)
-void PCF8563_set_timer(TimerFreq freq, u8 countdown){
-    //3. 设置Timer运行频率 & 启用Timer
-    u8 p;
-    p = (1 << 7) | freq;    // 4096Hz, 64Hz, 1Hz, 1/60Hz
-    I2C_WRITE(PCF8563_ADDR, 0x0E, &p, 1);
-
-    //4. 设置Timer计数值
-    p = countdown;
-    I2C_WRITE(PCF8563_ADDR, 0x0F, &p, 1);
-    
-}
-
-// 启用定时器Timer
-void PCF8563_enable_timer(u8 enable){
-    u8 cs2 = 0;
-    I2C_READ(PCF8563_ADDR, 0x01, &cs2, 1);
-    // TF  -> 清理Timer标记 Bit2 Timer Flag 清0  确保Timer可以触发
-    cs2 &= ~( 1 << 2 );
-    // TIE -> 开启Timer中断 Bit0 Timer Interrupt Enable
-    if(enable){
-        cs2 |=  ( 1 << 0 );
-    }else {
-        cs2 &= ~( 1 << 0 );    
-    }
-    // 写回去
-    I2C_WRITE(PCF8563_ADDR, 0x01, &cs2, 1);
-}
-
-// 清理定时器Timer标记
-void PCF8563_clear_timer(){
-    u8 cs2 = 0;
-    // 6. 启用外部中断, 在中断里判断Timer并清理TF标记
-    I2C_READ(PCF8563_ADDR, 0x01, &cs2, 1);
-    // TF  -> 清理Timer标记 Bit2 Timer Flag 清0  确保Timer可以触发
-    cs2 &= ~( 1 << 2 );
-    // 写回去
     I2C_WRITE(PCF8563_ADDR, 0x01, &cs2, 1);
 }
 

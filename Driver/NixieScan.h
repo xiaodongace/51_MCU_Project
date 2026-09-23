@@ -44,20 +44,8 @@
 /* 初始化：配数码管 IO + 启动 Timer2 1kHz 中断 */
 void Nixie_ScanInit(void);
 
-/* 停止扫描（关 Timer2），并把数码管全灭 */
-void Nixie_ScanStop(void);
-
-/* 设置某一位的显示内容（numId 是 LED_TABLE 的下标；位序按 NIXIE_POS_REVERSED 处理） */
-void Nixie_SetDigit(u8 pos, u8 numId);
-
-/* 用 8 位内容一次性设置整屏（buf[0] 是最左边那位） */
-void Nixie_SetBuffer(const u8 *buf);
-
 /* 显示时分秒：布局为 H H - M M - S S */
 void Nixie_SetTime(u8 hour, u8 minute, u8 second);
-
-/* 全灭 */
-void Nixie_Clear(void);
 
 /* 由 Timer2 中断调用：刷一位 */
 void Nixie_Scan1ms(void);

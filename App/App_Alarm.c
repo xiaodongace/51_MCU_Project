@@ -40,9 +40,6 @@ static u16 s_ringSec = 0;
 static u16 s_snoozeSec = 0;
 static u8  s_snoozeIdx = IDX_NONE;
 
-/* 硬件闹钟每次触发的计数（调试用，串口打印可以看到"门铃"真的响了） */
-static u8 s_hwAlarmHit = 0;
-
 /* 上一次设置的日出亮度，避免每秒都写 IO */
 static u8 s_lastSunrise = 0;
 
@@ -55,9 +52,16 @@ static u8 s_lastSunrise = 0;
 
 void PCF8563_on_alarm(void)
 {
-    /* 这里已经处在任务上下文（由 Alarm_OnRtcIrq 调过来的），不在中断里，
-     * 所以printf 是安全的。但为了不拖慢调度，只累加一个计数。 */
-    s_hwAlarmHit++;
+    /* 【第 70 轮清理】原来这里累加一个"硬件闹钟触发次数"的计数给 printf 用，
+     * 那个 printf 早已删除，计数没有任何读者 —— 整个变量一并去掉，
+     * 函数体留空。
+     *
+     * 空实现是**必须保留**的：PCF8563.h 里它是 extern 声明，
+     * 由 PCF8563_int_call() 调用，删掉函数体会链接报 UNRESOLVED。
+     *
+     * 为什么这里什么都不用做：闹钟到点之后要干的事（拉响、记 wom 去重、
+     * 清 INT3 标志）都由 Alarm_OnRtcIrq() 在调用本函数之前统一处理，
+     * 不需要驱动回调再插手。 */
 }
 
 void PCF8563_on_timer(void)
@@ -603,7 +607,6 @@ void Alarm_Init(void)
     s_ringSec     = 0;
     s_snoozeSec   = 0;
     s_snoozeIdx   = IDX_NONE;
-    s_hwAlarmHit  = 0;
     s_lastSunrise = 0;
     g_ringingIdx  = 0;
 

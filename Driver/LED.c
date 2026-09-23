@@ -34,8 +34,9 @@ static void led_write(u8 idx, u8 on)
 }
 
 /* 上电安全电平：总开关关闭、8 灯全灭。
- * 只写 IO 口，不改端口模式，可以放在 EAXSFR() 之前调用。 */
-void Led_SafeLevel(void)
+ * 只写 IO 口，不改端口模式。
+ * 【第 70 轮】只被本文件的 Led_Init() 调用 -> 收成 static。 */
+static void Led_SafeLevel(void)
 {
     LED_SW = 1;                                     /* 1 = 关闭总开关 */
     LED1 = LED2 = LED3 = LED4 = 1;
@@ -58,20 +59,6 @@ void Led_Init(void)
     P2_MODE_OUT_PP(GPIO_Pin_7 | GPIO_Pin_6 | GPIO_Pin_3 | GPIO_Pin_2 | GPIO_Pin_1 | GPIO_Pin_0);
 
     Led_SafeLevel();                                /* 先全灭，再决定要不要开总开关 */
-}
-
-void Led_AllOff(void)
-{
-    LED1 = LED2 = LED3 = LED4 = 1;
-    LED5 = LED6 = LED7 = LED8 = 1;
-    s_ledCount = 0;
-}
-
-void Led_AllOn(void)
-{
-    LED1 = LED2 = LED3 = LED4 = 0;
-    LED5 = LED6 = LED7 = LED8 = 0;
-    s_ledCount = LED_COUNT;
 }
 
 void Led_SetSingle(u8 idx, u8 on)
@@ -139,9 +126,4 @@ void Led_Breath(u8 level)
     }
 
     s_ledCount = count;
-}
-
-u8 Led_GetCount(void)
-{
-    return s_ledCount;
 }

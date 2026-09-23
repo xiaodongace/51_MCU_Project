@@ -35,12 +35,6 @@ void Music_Stop(void);
 /* 是否正在播放 */
 u8 Music_IsPlaying(void);
 
-/* 当前曲目编号，1..SONG_COUNT；没在播返回 SONG_NONE */
-u8 Music_CurrentSong(void);
-
-/* 当前音量 0..10 */
-u8 Music_Volume(void);
-
 /*
  * 非阻塞推进：拍子到了就换下一个音符。
  * 由 TASK_MUSIC 调用，调用频率越高节奏越准（本工程每 5ms 一次，

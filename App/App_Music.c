@@ -32,6 +32,12 @@ static u8  s_loop    = 0;           /* 1 = 放完从头再来（响铃用） */
 static u8  s_gapPhase = 0;          /* 1 = 正在断音（静音）那一段 */
 static u16 s_gapMs    = 0;          /* 本音符的断音时长 */
 
+/* 短促提示音的状态。定义在文件顶部（而不是原来放在 Music_Beep 前面）——
+ * 因为 music_start() 要清 s_beeping，C51 不允许"先用后声明"。 */
+static u8  s_beeping   = 0;
+static u32 s_beepStart = 0;
+static u16 s_beepMs    = 0;
+
 /*========================================================================
  *                              内部函数
  *========================================================================*/
@@ -112,16 +118,19 @@ static void music_start(u8 songId, u8 volume, u8 loop)
     s_playing = 1;
     s_gapPhase = 0;
 
+    /* 【第 70 轮统一】起曲子就把提示音收掉。
+     * 原来只有 Music_Play() 里清 s_beeping，Music_PlayLoop()（响铃用）没清 ——
+     * 于是"提示音还在计时的时候闹钟响了"会出现：Music_Tick 先进提示音分支，
+     * 到点 Buzzer_Stop()，把刚起的第一个音符掐掉。
+     * 两个入口都应该走同一条路，所以清在这里（两个调用者都经过本函数）。 */
+    s_beeping = 0;
+
     play_current();
 }
 
 /*========================================================================
  *                          短促提示音（非阻塞）
  *========================================================================*/
-
-static u8  s_beeping   = 0;
-static u32 s_beepStart = 0;
-static u16 s_beepMs    = 0;
 
 void Music_Beep(u16 ms)
 {
@@ -153,8 +162,7 @@ void Music_Beep(u16 ms)
 
 void Music_Play(u8 songId, u8 volume)
 {
-    s_beeping = 0;      /* 起曲子时把提示音收掉 */
-    music_start(songId, volume, 0);
+    music_start(songId, volume, 0);     /* 提示音由 music_start 统一收掉 */
 }
 
 void Music_PlayLoop(u8 songId, u8 volume)
@@ -179,16 +187,6 @@ void Music_Stop(void)
 u8 Music_IsPlaying(void)
 {
     return s_playing;
-}
-
-u8 Music_CurrentSong(void)
-{
-    return s_song;
-}
-
-u8 Music_Volume(void)
-{
-    return s_volume;
 }
 
 /*

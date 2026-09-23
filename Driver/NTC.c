@@ -24,11 +24,6 @@
 #include "GPIO.h"
 #include "ADC.h"
 #include "NVIC.h"
-#include <stdio.h>
-
-/* 标定用：每 5 次调用（=5 秒）打印一次原始 ADC 与中间量。
- * 真机上"温度不对"时，靠这一行区分是"采样值不对"还是"换算不对"。
- * 标定完成、确认温度正确之后改成 0。 */
 
 /* ==================== 电阻-温度对照表（逐字取自 v3.1） ==================== */
 u16 code temp_table[]= {
@@ -218,18 +213,15 @@ u16 code temp_table[]= {
 #define TBL_LEN     (sizeof(temp_table) / sizeof(temp_table[0]))
 #define TBL_BASE    55      /* 下标 0 对应 -55℃，所以温度 = 下标 - 55 */
 
-static void GPIO_config(void)
+void NTC_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStructure;
 
+    /* 【第 70 轮朴素化】原来拆成一个只被调用一次的 static GPIO_config()，
+     * 直接并回来，少一层跳转。 */
     GPIO_InitStructure.Pin  = NTC_GPIO_PIN;
     GPIO_InitStructure.Mode = GPIO_HighZ;       /* 模拟输入要高阻 */
     GPIO_Inilize(NTC_GPIO_PORT, &GPIO_InitStructure);
-}
-
-void NTC_Init(void)
-{
-    GPIO_config();
 }
 
 /*

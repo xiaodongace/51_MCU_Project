@@ -26,8 +26,4 @@
  * 必须在 EA = 1 之前调用（在 sys_init 里）。 */
 void Timers_Init(void);
 
-/* 读取系统毫秒计数（和 App_Public.c 的 SysTick_Get 等价，保留这个名字是为了
- * 与用户现有工程的叫法一致，两边都能用） */
-u32 Timers_GetSystemMs(void);
-
 #endif

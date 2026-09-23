@@ -28,9 +28,6 @@ u8 snakeScore        = 0;
 u8 snakeHighScore    = 0;
 SnakeNode *snakeHead = NULL;
 
-/* 绝对值宏 */
-#define ABS(x) ((x) < 0 ? -(x) : (x))
-
 /*------------------------------------------------------------------------
  *  【移植改动】把链表节点的 malloc/free 换成**静态节点池**
  *

@@ -34,14 +34,10 @@ u8 code LED_TABLE[] =
 	0x88,0x83,0xC6,0xA1,0x86,0x8E,0x89,0xF1,0xC7,0x8C,0x98,0xC1,0xA3,0xFF
 };
 
-static void GPIO_config(void) {
-    // 初始化为推挽输出
-    NIXIE_GPIO_INIT();
-}
-
 void NIXIE_init(void){
-    GPIO_config();
-    
+    // 初始化为推挽输出
+    // 【第 70 轮朴素化】原来拆成一个只被调用一次的 static GPIO_config()，并回来
+    NIXIE_GPIO_INIT();
 }
 
 void NIXIE_show(u8 a_num, u8 b_idx){
@@ -82,5 +78,3 @@ void NIXIE_display(u8 num_id, u8 pos){
     
     NIXIE_show(a_num, b_idx);
 }
-
-//NIXIE.c(82): warning C316: unterminated conditionals

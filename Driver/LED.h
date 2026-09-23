@@ -23,18 +23,8 @@ sbit LED8   = P2 ^ 0;
 
 #define LED_COUNT   8
 
-/* 上电安全电平：总开关关掉（P45=1 表示关闭），8 颗灯全灭。
- * 必须在 sys_init() 最前面调用，否则上电瞬间灯是随机状态。 */
-void Led_SafeLevel(void);
-
 /* 初始化：配推挽 + 关总开关 + 全灭 */
 void Led_Init(void);
-
-/* 全部熄灭 */
-void Led_AllOff(void);
-
-/* 全部点亮 */
-void Led_AllOn(void);
 
 /* 打开/关闭总开关（用于统一调亮度/省电） */
 void Led_Power(u8 on);
@@ -60,8 +50,5 @@ void Led_SetMask(u8 mask);
  * 所以"越来越亮"用"一颗接着一颗点亮"来实现——这是视觉上可行的近似。
  */
 void Led_Breath(u8 level);
-
-/* 查询当前点亮的颗数（供调试/显示用） */
-u8 Led_GetCount(void);
 
 #endif

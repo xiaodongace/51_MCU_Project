@@ -19,19 +19,9 @@
  */
 #include "App_Public.h"
 #include "App_System.h"
-#include "delay.h"
 
 void main_start(void) _task_ TASK_MAIN
 {
-//    delay_ms(250);
-//    delay_ms(250);
-//    delay_ms(250);
-//    delay_ms(250);
-//    delay_ms(250);
-//    delay_ms(250);
-//    delay_ms(250);
-//    delay_ms(250);
-    
     /* 初始化硬件：安全电平 -> EAXSFR -> 各外设 -> EA=1 -> 装载 EEPROM 与时钟 */
     sys_init();
 

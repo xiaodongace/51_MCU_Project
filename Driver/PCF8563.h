@@ -68,19 +68,7 @@ void PCF8563_set_alarm(Alarm_t alarm);
 // 启用闹铃
 void PCF8563_enable_alarm(u8 enable);
 
-// 清理闹铃标记
-void PCF8563_clear_alarm();
-
 // Timer ---------------------------------------------
-
-// 设置定时器(频率 & 计数值)
-void PCF8563_set_timer(TimerFreq freq, u8 countdown);
-
-// 启用定时器Timer
-void PCF8563_enable_timer(u8 enable);
-
-// 清理定时器Timer标记
-void PCF8563_clear_timer();
 
 // 处理中断消息 ----------------------------------------
 void PCF8563_int_call(void);

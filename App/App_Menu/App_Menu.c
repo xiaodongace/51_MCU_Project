@@ -2,6 +2,8 @@
 #include "Buzzer.h"
 #include "Key.h"
 #include "LED.h"
+#include "Alarmclock.h"
+#include "Uarts.h"
 
 
 /* 按键编号 */
@@ -340,6 +342,9 @@ void App_Menu_Task() _task_ App_Menu_Task_Id {
     u8 k4_short;
     u8 k4_long;
 
+    /* 菜单任务启动时初始化外接RTC，确保后续串口对时可写入。 */
+   PCF8563_Init(); 
+
     /*
      * 菜单任务负责初始化SPI屏幕，
      * 这样不需要再创建原来的SPI_OLED_Task。
@@ -356,6 +361,11 @@ void App_Menu_Task() _task_ App_Menu_Task_Id {
     Menu_Refresh();
 
     while (1) {
+        /* 只在菜单页处理对时，避免与DHT页面的I2C OLED共用总线时冲突。 */
+        if (current_page == PAGE_MENU) {
+            Uarts_RtcSyncProcess();
+        }
+
         /*
          * 整个工程只能在这里调用Key_Scan()
          */

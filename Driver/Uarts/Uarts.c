@@ -12,6 +12,7 @@ static Clock_t xdata g_rtcVerifyClock;
 static u8 g_rtcIspPosition = 0;
 static u8 g_rtcRxScanPosition = 0;
 static bit g_rtcIspFrameReady = 0;
+static bit g_rtcSyncAttempted = 0;
 
 /* 保留最近一次对时结果，供应用任务查询。 */
 volatile u8 Uarts_RtcSyncLastStatus = UART_RTC_SYNC_WAITING;
@@ -191,6 +192,9 @@ u8 Uarts_RtcSyncProcess(void)
     u8 rxPosition;
     u8 dat;
 
+    /* 本次复位已经处理过一帧有效时间，不再重复读写RTC。 */
+    if (g_rtcSyncAttempted) return Uarts_RtcSyncLastStatus;
+
     /* 原UART驱动缓冲区写满后会归零；在此兼容其回绕方式。 */
     /* 接收计数在UART1中断里更新，强制每次从内存读取其最新值。 */
     rxPosition = *((volatile u8 *)&COM1.RX_Cnt);
@@ -237,6 +241,9 @@ u8 Uarts_RtcSyncProcess(void)
         return Uarts_RtcSyncLastStatus;
     }
 
+    /* 第一帧有效时间只尝试一次；失败状态保留到下一次复位。 */
+    g_rtcSyncAttempted = 1;
+
     /* 写入目标时间，再读回RTC确认实际保存的时间。 */
     if (!PCF8563_SetTime(&g_rtcIspClock))
     {
@@ -280,6 +287,7 @@ void Uarts_Init(unsigned char uartMask) {
         g_rtcIspPosition = 0;
         g_rtcRxScanPosition = 0;
         g_rtcIspFrameReady = 0;
+        g_rtcSyncAttempted = 0;
         Uarts_RtcSyncLastStatus = UART_RTC_SYNC_WAITING;
 
         UART1_SW(UART1_SW_P30_P31);

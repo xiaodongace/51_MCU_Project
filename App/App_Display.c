@@ -139,8 +139,9 @@ static char s_spiLine[48];
 /* 日期与时间任务（SPI 版面）的临时串缓冲，同样放文件级 */
 static char s_dtLine[40];
 
-/* 测距仪版面的临时串缓冲（同样放文件级 static，理由同上） */
-static char s_rngLine[40];
+/* 【2026-09-22】原来这里有个 static char s_rngLine[40]; —— 给测距仪
+ * 版面拼 "距离 nn cm" / "RAW nnnn" 用的。用户要求去掉 RAW、
+ * 且主屏不再显示距离之后，它没有使用者了，已删除（省 40 字节 xdata）。 */
 
 /*------------------------------------------------------------------------
  *  ※【参数约定 · 必须记住】**y 是"页号"，不是"行号"**
@@ -392,6 +393,24 @@ static void main_draw_menu(void)
 
 static void main_redraw(u8 doClear)
 {
+    /* ==============================================================
+     * 【2026-09-22 关键修复】"7 游戏"的游玩/结算态必须**第一个**判断并返回，
+     * 绝不能等下面那句 SPI_OLED_Clear() 之后再判。
+     *
+     * 原来就是那个顺序：清屏在前、判断在后，而判断命中时直接 return。
+     * 于是游戏期间**任何**一次 Display_Refresh(1)（切页、闹钟响、
+     * 每秒来的刷新请求…）都会"先把屏清黑、再什么都不画"。
+     * 真机表现就是玩家说的："结算画面极快就没了"、
+     * 而且因为没人重画，屏幕要一直黑到结算结束才恢复。
+     *
+     * 游戏画面只归游戏自己的 Draw() 管，显示层一个字都不能碰 ——
+     * 所以这里在清屏**之前**就返回。
+     * ============================================================== */
+    if (s_page == PAGE_GAME_HALL && Menu_GameIsPlaying())
+    {
+        return;
+    }
+
     /* 【2026-09-21】拆出 doClear：切页面必须清屏（擦掉上一页残留），
      * 页内移动一定不能清屏（一清就闪）。见 Display_Refresh 的说明。 */
     if (doClear)
@@ -438,7 +457,8 @@ static void main_redraw(u8 doClear)
         return;
     }
 
-    /* 【测距仪】主屏显示大字距离（它自带版面，4 行全写满） */
+    /* 【测距仪】主屏只显示任务名 + 一行提示（距离在副屏）。
+     * 自带版面、4 行全写满 —— 见 main_draw_range 的说明。 */
     if (s_page == PAGE_RANGE)
     {
         main_draw_range();
@@ -459,10 +479,8 @@ static void main_redraw(u8 doClear)
      */
     if (s_page == PAGE_GAME_HALL)
     {
-        if (Menu_GameIsPlaying())
-        {
-            return;
-        }
+        /* 走到这里 s_gameState 一定是 0（列表态）——
+         * 游玩/结算态已经在函数开头 return 了。 */
         main_draw_game_list();
         return;
     }
@@ -1290,43 +1308,36 @@ static void main_draw_settings(void)
 /*========================================================================
  *                  测距仪版面（任务「4 测距仪」）
  *
+ *  【2026-09-22 用户要求 · 本轮改动】**距离只在副屏（I2C）显示，
+ *  主屏（SPI）不显示距离**；同时**去掉 RAW**（原始计数）那一行。
+ *  改前的分工是"主屏也显示距离 + 第 4 行显示 RAW"，两屏信息重复。
+ *
  *  主屏（SPI，4 行，页号 0/2/4/6）：        副屏（I2C，4 行）：
- *      测距仪                                   RANGE
- *      (空行)                                   123 cm
- *      距离 123 cm                              [####......]
- *      范围 2-400cm                             2-400cm
+ *      测距仪                                  DISTANCE
+ *      (空行)                                  123 cm
+ *      距离见副屏                              [####......]
+ *      (空行)                                  RANGE 2-400cm
  *
  *  两屏都写满 4 行 —— 这是"不清屏只重画行"的前提
  *  （测距值每 150ms 变一次，走的就是那种刷新路径）。
+ *  主屏这 4 行是**固定内容**（不含任何随测量变化的量），
+ *  所以实际每 150ms 被重画的只有副屏的第 2、3 行。
  *========================================================================*/
 
-/* 主屏：4 行全写满 */
+/* 主屏：4 行全写满，但**不含距离值**（用户要求距离只出现在副屏）。
+ * main_draw_line_fit 会把每行补满到整屏宽，所以换页时不会留下残字。 */
 static void main_draw_range(void)
 {
-    /* 【2026-09-22】第 1 行带上量程，把第 4 行让给**原始 tick 数**。
-     * 为什么要显示 RAW：用户报"能测但不太准"，而"不准"的根因
-     * 只能靠一次**实测标定**解决 —— 量一个已知距离、读出 RAW、
-     * 新系数 = RAW ÷ 实际厘米。见 HC_SR04.h 的标定说明。
-     * 用 RAW 而不是"显示值"来算，是因为显示值已经过了一次整数除法，
-     * 拿未截断的 RAW 算可以一步到位、无二次误差。 */
-    main_draw_line_fit(0, (char *)"测距仪 2-400cm");
+    main_draw_line_fit(0, (char *)"测距仪");
     main_draw_line_fit(2, (char *)"");
-
-    if (Menu_RangeCm() == 0)
-    {
-        main_draw_line_fit(4, (char *)"距离 ---");
-    }
-    else
-    {
-        sprintf(s_rngLine, "距离 %u cm", (unsigned)Menu_RangeCm());
-        main_draw_line_fit(4, s_rngLine);
-    }
-
-    sprintf(s_rngLine, "RAW %u", (unsigned)Menu_RangeRaw());
-    main_draw_line_fit(6, s_rngLine);
+    main_draw_line_fit(4, (char *)"距离见副屏");
+    main_draw_line_fit(6, (char *)"");
 }
 
-/* 副屏：数值 + 一条 10 格的进度条 */
+/* 副屏：距离数值 + 一条 10 格的进度条 + 量程说明。
+ * 【2026-09-22】第 4 行原来是 RAW（原始计数），按用户要求去掉，
+ * 改放量程；标题行也从 "RANGE 2-400" 改成 "DISTANCE" ——
+ * 这一屏现在的主题就是"距离"，量程挪到第 4 行，两处不再重复。 */
 static void sub_draw_range_page(void)
 {
     char buf[24];
@@ -1335,7 +1346,7 @@ static void sub_draw_range_page(void)
     u8   n;
     u8   i;
 
-    sub_draw_row_sel(0, "RANGE 2-400", 0);
+    sub_draw_row_sel(0, "DISTANCE", 0);
 
     if (cm == 0)
     {
@@ -1371,10 +1382,9 @@ static void sub_draw_range_page(void)
     sprintf(buf, "[%s]", bars);
     sub_draw_row_sel(2, buf, 0);
 
-    /* 【2026-09-22】第 4 行由"量程"改成**原始 tick 数**：量程已经挪到标题行，
-     * 这一行让给标定（新系数 = RAW ÷ 实际厘米）。 */
-    sprintf(buf, "RAW %u", (unsigned)Menu_RangeRaw());
-    sub_draw_row_sel(3, buf, 0);
+    /* 第 4 行：量程。原来这里是 RAW（原始计数），已按用户要求去掉 ——
+     * 去掉后它也不再需要标定用途，所以不显示在屏上。 */
+    sub_draw_row_sel(3, "RANGE 2-400cm", 0);
 }
 
 /*========================================================================

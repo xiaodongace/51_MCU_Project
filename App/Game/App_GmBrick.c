@@ -231,15 +231,32 @@ void Brick_ShowGameOver(void)
 {
     u8 buf[20];
 
-    /* 【2026-09-22 修正】原来 SPI_OLED_Refresh() 在**画文字之前**
-     * （清屏后立刻刷新），而画完文字之后的 Refresh() 被注释掉了 ——
-     * 于是文字只写进了显存、从没送到屏幕，实际看到的还是黑屏。
-     * 现在把 Refresh() 放到所有绘制之后。 */
+    /* 【2026-09-23 修"结算画面全黑、看不到分数"】
+     *
+     * 主屏有两条**互不相容**的通路（完整说明见 Driver/SPI_OLED/spi_oled.h）：
+     *     A 直写屏：SPI_OLED_Clear() + SPI_OLED_Display_GB2312_string()
+     *               —— 菜单/页面级界面走这条
+     *     B 显存：  SPI_OLED_GClear() + SPI_OLED_DrawPoint() + SPI_OLED_Refresh()
+     *               —— 本游戏走这条（见 Brick_Draw）
+     *
+     * 上一版这里把两条**混用**了：
+     *     GClear()                          // 清的是**显存**
+     *     Display_GB2312_string(...)        // 直写屏，压根没往显存里写
+     *     Refresh()                         // 把（空的）显存整屏覆盖上去
+     * -> 刚写好的字被自己擦掉 -> 结算画面全黑 3 秒。
+     *
+     * 现在全部走显存通路：先 GClear 清显存，再用 GBuf_string 往显存里写字，
+     * 最后一次 Refresh 统一上屏 —— 与 Brick_Draw 内部完全一致。 */
     SPI_OLED_GClear();
 
-    SPI_OLED_Display_GB2312_string(28, 2, "GAME OVER");
+    /* 坐标：128x64 屏，按"页"定位（1 页 = 8 像素高）
+     *   "GAME OVER" 9 个半角字符 x 8 = 72 宽 -> 居中 x = (128-72)/2 = 28
+     *   "SCORE:n"  最长 9 字符 = 72 宽 -> 也用 28
+     * 取页 2 与页 4（屏幕中部偏上），醒目、不贴边。 */
+    SPI_OLED_GBuf_string(28, 2, (u8 *)"GAME OVER");
+
     sprintf((char *)buf, "SCORE:%d", (int)brickScore);
-    SPI_OLED_Display_GB2312_string(28, 4, buf);
+    SPI_OLED_GBuf_string(28, 4, buf);
 
     SPI_OLED_Refresh();
 }

@@ -124,9 +124,8 @@ u8 Menu_SetSel(void);
  * 显示层读它来画数值和进度条。 */
 u16 Menu_RangeCm(void);
 
-/* 【2026-09-22】最近一次测距的**原始 tick 数**（未经换算、未经截断）。
- * 专门给标定用：新系数 = Menu_RangeRaw() ÷ 实际厘米数。见 HC_SR04.h。 */
-u16 Menu_RangeRaw(void);
+/* 【2026-09-22 清理】原来这里有 Menu_RangeRaw()（把原始计数给显示层
+ * 显示 "RAW nnnn" 用）。用户要求去掉 RAW 之后已删除。 */
 
 /* 「测距仪」任务的周期测距（由 TASK_LOGIC 的 10ms 循环调用，内部节流） */
 void Range_Poll(void);

@@ -22,6 +22,13 @@
 #include "GPIO.h"
 #include "SPI_OLED.h"
 
+/* 子弹槽个数。
+ * 【2026-09-22 用户要求】"每 3 秒只能发射一次子弹，一次子弹为 10 枚"，
+ * 所以从 5 个扩到 10 个 —— 一次齐射正好把槽占满。
+ * 子弹飞完全屏只要约 0.4 秒，而冷却有 3 秒，所以"槽被上一轮占着"
+ * 这种情况实际不会发生。 */
+#define PLANE_BULLET_MAX 10
+
 /* 游戏状态 */
 #define PLANE_STATE_MENU 0
 #define PLANE_STATE_PLAYING 1
@@ -62,13 +69,15 @@ typedef struct {
 
 /* 游戏全局变量 */
 extern u8 planeGameState;
-extern u8 planeScore;
-extern u8 planeHighScore;
+/* 【2026-09-22】分数从 u8 改成 u16 —— 一次齐射 10 枚、每枚最高 30 分，
+ * 一轮就可能拿到 300 分，u8 的 255 上限会直接溢出（分数突然归零）。 */
+extern u16 planeScore;
+extern u16 planeHighScore;
 extern u8 planeLives;
 extern u8 planeLevel;
 extern PlayerPlane player;
 extern EnemyPlane enemies[10];  /* 最多10个敌机 */
-extern Bullet bullets[5];       /* 最多5发子弹 */
+extern Bullet bullets[PLANE_BULLET_MAX];   /* 一次齐射 10 枚 */
 
 /* 函数声明 */
 void PlaneGame_Init(void);

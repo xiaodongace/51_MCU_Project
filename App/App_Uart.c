@@ -22,7 +22,8 @@
 #define ST_BODY     3
 #define ST_SUM      4
 
-/* 一帧最长：8 组闹钟 40 字节 + CMD + LEN + SUM + 帧头 = 45，留点余量 */
+/* 一帧最长：闹钟列表 ALARM_MAX x 5 字节（当前 3 组 = 15）+ 设置项若干
+ * + CMD + LEN + SUM + 帧头 -> 48 字节够用（原来 8 组时是 40 字节）。 */
 #define RX_FRAME_MAX    48
 
 /* 发送缓冲。放 xdata：C51 的栈在片内 RAM 上很紧，几十字节别放局部变量 */
@@ -164,7 +165,7 @@ static void cmd_execute(u8 cmd, const u8 *d, u8 len)
         send_ack(cmd, UC_OK);
         break;
 
-    /* ---------- 读 8 组闹钟 ---------- */
+    /* ---------- 读闹钟列表（ALARM_MAX 组，每组 5 字节）---------- */
     case UC_GET_ALARMS:
         {
             u8 i;

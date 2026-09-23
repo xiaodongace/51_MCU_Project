@@ -34,8 +34,10 @@ static u16 s_hist[SR04_FILTER_N];
 static u8  s_histIdx = 0;
 static u8  s_histCnt = 0;
 
-/* 最后一次测量的原始计数（诊断与标定用） */
-static u16 s_lastRaw = 0;
+/* 【2026-09-22 清理】原来这里有个 static u16 s_lastRaw; —— 记录
+ * 最后一次测量的原始计数，供屏上 "RAW nnnn" 显示与一次标定。
+ * 用户要求去掉 RAW 显示后它没有读者了，已删除。
+ * 标定办法见 HC_SR04.h 的注释（要恢复只需 3 行代码）。 */
 
 /*========================================================================
  *  照抄自上课代码 Driver/Ultrasonic.c 的 Delay10us()
@@ -112,7 +114,7 @@ static s8 sr04_read_raw(u16 *out)
     }
     if (cnt >= SR04_EDGE_CNT_MAX)
     {
-        *out = cnt;                 /* = 500，屏上显示 RAW 500 就是这种情况 */
+        *out = cnt;                 /* = 500：超时值的具体含义见 HC_SR04.h */
         return -1;
     }
 
@@ -128,7 +130,7 @@ static s8 sr04_read_raw(u16 *out)
     }
     if (cnt >= SR04_ECHO_CNT_MAX)
     {
-        *out = cnt;                 /* = 3000，屏上显示 RAW 3000 */
+        *out = cnt;                 /* = 3000：超时值，含义见 HC_SR04.h */
         return -2;
     }
 
@@ -190,8 +192,9 @@ static u16 sr04_median(u16 now)
  *  对外：测一次距离
  *
  *  返回 cm；0 表示本次没测到。
- *  s_lastRaw 在任何一次测量后都会更新 —— 屏上的 RAW 就是它，
- *  用户能靠它区分"等起跳超时(500)"、"高电平超时(3000)"和"正常值"。
+ *  【2026-09-22】失败原因仍由内部 sr04_read_raw() 的返回值区分
+ *  （-1 = 等起跳超时、-2 = 高电平超时），只是当前没有对外暴露 ——
+ *  屏上不再显示原始计数了（用户要求）。要恢复见 HC_SR04.h。
  *========================================================================*/
 u16 SR04_Measure(void)
 {
@@ -202,9 +205,6 @@ u16 SR04_Measure(void)
     s8  res;
 
     res = sr04_read_raw(&raw);
-
-    /* 无条件记录：失败时 raw 是 500 或 3000，屏上一看就知道卡在哪一步 */
-    s_lastRaw = raw;
 
     if (res != 0)
     {
@@ -232,11 +232,6 @@ u16 SR04_Measure(void)
     return cm;
 }
 
-u16 SR04_LastRaw(void)
-{
-    return s_lastRaw;
-}
-
 void SR04_ResetFilter(void)
 {
     u8 i;
@@ -247,5 +242,4 @@ void SR04_ResetFilter(void)
     }
     s_histIdx = 0U;
     s_histCnt = 0U;
-    s_lastRaw = 0U;
 }

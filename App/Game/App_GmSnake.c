@@ -118,9 +118,11 @@ void Snake_Init(void)
     snakeHead = NULL;
 
     /* 创建蛇头。
-     * 【2026-09-22 修正】出生点从屏幕正中(x=64)挪到左侧(x=16)：
-     * 正中出发到右墙只有 8 步，配合 GAME_STEP_SNAKE=150ms 也只有 1.2 秒；
-     * 放在左侧有 13 步 ≈ 2 秒的操作窗口，能正常玩起来。 */
+     * 【出生点】放在**左侧 x=16**（原来在屏幕正中 x=64）。
+     *   到右墙有 13 步；配合当前节拍 GAME_STEP_MS_SNAKE = 250ms
+     *   （定义在 App_Menu.c）就是约 3.3 秒的操作窗口，正常能玩。
+     *   ※ 更早那版节拍是 100ms，13 步只有 1.3 秒，真机反馈"速度极快"，已放慢。
+     *     节拍值现在按**毫秒**写在 App_Menu.c，不再写"多少拍"。 */
     newHead = (SnakeNode *)snake_alloc();
     if (newHead == NULL)
     {
@@ -354,22 +356,32 @@ void Snake_ShowGameOver(void)
 {
     u8 buf[20];
 
-    /* 【2026-09-22 补实现】原来这里四行绘制**全被注释掉了**，
-     * 所以结算画面 = "清屏 + 刷新" = 一片空白。
-     * 注释里那些 Draw_Text / Draw_Number 在参考工程里也没有实现
-     * （那边同样是注释的），所以没有可抄的 —— 改用本工程驱动里
-     * 现成的 SPI_OLED_Display_GB2312_string 画。
+    /* 【2026-09-23 修"结算画面全黑、看不到分数"】
      *
-     * 坐标：128x64 屏，这个函数按"页"定位（1 页 = 8 像素高）。
-     *   "GAME OVER" 9 个半角字符 x 8 像素 = 72 宽 -> x = (128-72)/2 = 28
-     *   "SCORE:n" 最长 9 字符 = 72 宽 -> 也用 28
-     * 取页 2 与页 4（屏幕中部偏上），醒目且不贴边。 */
+     * 主屏有两条**互不相容**的通路（完整说明见 Driver/SPI_OLED/spi_oled.h）：
+     *     A 直写屏：SPI_OLED_Clear() + SPI_OLED_Display_GB2312_string()
+     *               —— 菜单/页面级界面走这条
+     *     B 显存：  SPI_OLED_GClear() + SPI_OLED_DrawPoint() + SPI_OLED_Refresh()
+     *               —— 本游戏走这条（见 Snake_Draw）
+     *
+     * 上一版这里把两条**混用**了：
+     *     GClear()                          // 清的是**显存**
+     *     Display_GB2312_string(...)        // 直写屏，压根没往显存里写
+     *     Refresh()                         // 把（空的）显存整屏覆盖上去
+     * -> 刚写好的字被自己擦掉 -> 结算画面全黑 3 秒。
+     *
+     * 现在全部走显存通路：先 GClear 清显存，再用 GBuf_string 往显存里写字，
+     * 最后一次 Refresh 统一上屏 —— 与 Snake_Draw 内部完全一致。 */
     SPI_OLED_GClear();
 
-    SPI_OLED_Display_GB2312_string(28, 2, "GAME OVER");
+    /* 坐标：128x64 屏，按"页"定位（1 页 = 8 像素高）
+     *   "GAME OVER" 9 个半角字符 x 8 = 72 宽 -> 居中 x = (128-72)/2 = 28
+     *   "SCORE:n"  最长 9 字符 = 72 宽 -> 也用 28
+     * 取页 2 与页 4（屏幕中部偏上），醒目、不贴边。 */
+    SPI_OLED_GBuf_string(28, 2, (u8 *)"GAME OVER");
 
     sprintf((char *)buf, "SCORE:%d", (int)snakeScore);
-    SPI_OLED_Display_GB2312_string(28, 4, buf);
+    SPI_OLED_GBuf_string(28, 4, buf);
 
     SPI_OLED_Refresh();
 }

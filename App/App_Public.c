@@ -16,7 +16,7 @@ Clock_t g_clock;
 /* 掉电保存的设置 */
 Settings_t g_settings;
 
-/* 8 组闹钟 */
+/* 闹钟：组数 = ALARM_MAX（当前 3 组） */
 AlarmItem_t g_alarms[ALARM_MAX];
 
 /* 响铃状态：0=没响；非 0 = 正在响的闹钟下标 + 1 */

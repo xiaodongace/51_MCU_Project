@@ -64,8 +64,12 @@ static u8 s_alarmEdit = 0;      /* 闹钟页状态：0 = 列表态，1 = 编辑态（不压栈）*
 static u8  s_gameState = 0;     /* 0 列表 / 1 游玩 / 2 结算 */
 static u8  s_gameSel   = 0;     /* 列表态光标 0..2 */
 static u8  s_gameIdx   = 0;     /* 正在玩哪个 0..2 */
-static u16 s_gameCnt   = 0;     /* 帧计数 / 结算倒计时 */
-static u8  s_planeShot = 0;     /* 飞机大战的自动发射计数 */
+/* 【2026-09-22】游戏节拍全部改成"时间戳"，不再数 TASK_LOGIC 的拍数。
+ * 单位是 g_sysTick 的毫秒值（Timer3，1ms 一格），理由见 Game_Poll 上方那段。 */
+static u32 s_gameFrameMs = 0;   /* 上一次推帧的时刻 */
+static u32 s_gameOverMs  = 0;   /* 进入结算态的时刻 */
+static u32 s_lastFireMs  = 0;   /* 上次发射子弹的时刻（飞机大战） */
+static u8  s_everFired   = 0;   /* 本局发射过没有（0 = 进游戏即可首发） */
 
 /* ---- 「日期和时间」任务的状态（第 3 点）---- */
 static u8  s_dtActive = 0;      /* 1 = 正在这个任务里 */
@@ -254,7 +258,7 @@ static void menu_task_leave(UIPageId_t pg)
          * （Menu_Home() 会把整条栈逐层 leave），所以必须清，
          * 否则下次进来会直接停在半局的游戏画面上。 */
         s_gameState = 0;
-        s_gameCnt   = 0;
+        s_everFired = 0;
         break;
 
     default:
@@ -466,7 +470,7 @@ static void menu_enter(u8 idx)
         /* 【掌机模式】从任务清单进来总是先看"选游戏"那一屏 */
         s_gameState = 0;
         s_gameSel   = 0;
-        s_gameCnt   = 0;
+        s_everFired = 0;
         Menu_Push(pg);
         break;
 
@@ -548,16 +552,10 @@ void Range_Poll(void)
     Display_Refresh(0);
 }
 
-/* 原始计数（cnt），标定与判故障用。
- * 【2026-09-22】新版本每次测量都会更新它（不再只是"最后一次成功"）：
- *   · 正常测量 -> 是本次的 cnt，例如 20cm 约 118
- *   · 等起跳超时 -> 500   （模块没插 / 接线松 / TRIG 没输出）
- *   · 高电平超时 -> 3000  （超量程或一直高）
- * 所以屏上的 RAW 一眼就能看出卡在哪一步。 */
-u16 Menu_RangeRaw(void)
-{
-    return SR04_LastRaw();
-}
+/* 【2026-09-22 清理】原来这里有个 Menu_RangeRaw()，把驱动侧的原始计数
+ * （cnt）暴露给显示层，用于屏上的 "RAW nnnn" 与一次标定。
+ * 用户要求去掉 RAW 显示后它没有使用者了，已删除；
+ * 驱动侧的 SR04_LastRaw() 也一并删除（见 HC_SR04.h 的说明）。 */
 
 u16 Menu_RangeCm(void)
 {
@@ -575,11 +573,22 @@ u16 Menu_RangeCm(void)
  *    "游戏大厅不要了，把『选游戏+游玩』做成『7 游戏』页内的两个状态
  *     （和闹钟/番茄钟同款）。"
  *
+ *  【后续变更 · 同一天提的】
+ *    · 强制退出：从"4 个独立按键一起按"改成 **矩阵键盘第一行第四个**
+ *      （见 GAME_KEY_EXIT）。更好按、也不会误触。
+ *      原来那套"同时按下"的检测代码已经删掉了。
+ *    · 飞机大战新增 **矩阵键盘第四排第二个 = 发射**（见 GAME_KEY_FIRE），
+ *      每 3 秒一轮、一轮 10 枚。这个键原本是"下"，所以在飞机这一局里
+ *      没有"下"这个动作（飞机初始 y=50，本来也只能下移 5 像素）。
+ *      在此之前飞机是"外壳每 90ms 自动替它发一枚"，那段逻辑已删。
+ *    · 贪吃蛇节拍从 100ms/步 放慢到 250ms/步（真机反馈"速度极快"）。
+ *    · 结算画面停留从 1.5 秒延长到 3 秒（真机反馈"一闪就没"）。
+ *
  *  => **不做单独的"大厅"页面**：PAGE_GAME_HALL 就是"7 游戏"任务页本身，
  *     页内三个状态（不额外压栈，和闹钟/番茄钟一致）：
  *        s_gameState = 0  列表态：SPI 列 3 个游戏，K1/K3 选、K2 开始、K4 返回
  *        s_gameState = 1  游玩态：SPI 由游戏自己画，独立按键全部屏蔽
- *        s_gameState = 2  结算态：显示 GameOver 1.5 秒后自动回列表
+ *        s_gameState = 2  结算态：显示 GameOver 3 秒后自动回列表
  *
  *  三个游戏都来自参考工程《23_基于stc8的多功能时钟》的 User/ 目录
  *  （game.c / snake.c / planegame.c），移植时只做了机械适配：
@@ -611,34 +620,60 @@ u16 Menu_RangeCm(void)
  * 游玩态下独立按键仍然一律不响应（除了这一下退出）。 */
 #define GAME_KEY_EXIT   3U
 
+/* 【2026-09-22 用户要求】飞机大战的**发射键 = 矩阵键盘第四排第二个**，
+ * 也就是 param 13 —— 和"下"是同一个键。
+ *
+ * 处理方式：game_input() 里**先判发射、再判方向**，
+ * 所以在飞机大战里这个键就是"发射"，飞机不再有"下"这个动作。
+ * 影响很小：飞机初始 y=50，屏幕 64 高、机身 8 高，本来也只能下移 5 像素。
+ * ※ 贪吃蛇里这个键仍然是"下"——只在飞机那一支里被改成发射。 */
+#define GAME_KEY_FIRE   13U
+
 /* 游戏个数 GAME_COUNT 定义在 App_Menu.h（显示层也要用）*/
 
-/* 每 3 拍推一帧。TASK_LOGIC 是 10ms 一拍，所以 = 30ms/帧（约 33 帧/秒）。
- * 刷屏（软件 SPI 写 1024 字节）约 8.5ms，30ms 一拍留了一倍余量。 */
-#define GAME_FRAME_DIV  3U
-
-/* 【2026-09-22 二次修正】贪吃蛇用单独的节拍。
+/*------------------------------------------------------------------------
+ *  【2026-09-22 三次修正 · 节拍改成"按毫秒"而不是"数拍数"】
  *
- *  真机反馈过两次"贪吃蛇无法移动"。第一次我判断成"太快"（30ms/步、
- *  出生点在屏幕正中，0.24 秒就撞右墙），改成 150ms 并挪了出生点。
- *  但**那只是缓解，不是根因** —— 真正的根因是静态节点池没初始化
- *  （s_snakeFree 一直是 NULL，见 App_GmSnake.c 的 Snake_Init），
- *  蛇根本没被创建出来，所以怎么改节拍都不动。
+ *  原来三个节拍宏都是"数 TASK_LOGIC 被调用的次数"：
+ *      GAME_FRAME_DIV  3    -> 3 拍 x 10ms = 30ms/帧
+ *      GAME_STEP_SNAKE 10   -> 10 拍 x 10ms = 100ms/步
+ *      GAME_OVER_DIV   150  -> 150 拍 x 10ms = 1.5 秒
+ *  这套写法**依赖一个隐含假设**："TASK_LOGIC 一定每 10ms 转一圈"。
+ *  而那个 10ms 又来自 os_wait2(K_TMO,2) 乘以 RTX51 的 tick 时长 ——
+ *  一旦 tick 不是预期的 5ms，三个数字就全部失准。
+ *  （真机现象："贪吃蛇快得没法玩"+"结算画面一闪就没"，就是它。）
  *
- *  现在根因已修，节拍按"手感"重新定：
- *     参考工程原版 = os_wait2(K_TMO,10) = 50ms/步（从屏幕正中出发，0.4 秒，偏快）
- *     上一版       = 150ms/步（从 x=16 出发要 2.1 秒，偏慢，看着像卡住）
- *     现在         = 10 拍 = 100ms/步（从 x=16 到墙约 1.4 秒，适中）
- *  打砖块/飞机是"每步移动 1~4 像素"，30ms 一步本来就合适，保持原速。 */
-#define GAME_STEP_SNAKE 10U
+ *  现在改成**读 1ms 系统节拍（g_sysTick）算毫秒差**：
+ *    · 节拍只由 Timer3 的 1ms 中断决定，与任务调度无关；
+ *    · 任务偶尔被拖长，下一帧只是"晚一点"，不累积漂移；
+ *    · 代码里写 250 就是 250ms，读的人不用再换算。
+ *  这也是本工程一贯的做法（见 App_Music.c："时间推进不依赖等待"）。
+ *------------------------------------------------------------------------*/
 
-static u8 game_step_div(void)
+/* 一帧多少毫秒。打砖块/飞机是"每帧移动 1~4 像素"，30ms 合适（约 33 帧/秒）。
+ * 刷屏（软件 SPI 写 1024 字节）约 8.5ms，30ms 留了一倍余量。 */
+#define GAME_FRAME_MS       30U
+
+/* 贪吃蛇单独一个节拍。
+ *  蛇每**步**走 8 个像素（见 App_GmSnake.c 的 newX += 8），
+ *  屏幕宽 128、出生点在 x=16，到右墙只有 13 步 ——
+ *  所以这个值直接就是"玩家反应窗口 / 13"：
+ *      100ms -> 1.3 秒撞墙，来不及按（真机："速度极快"）
+ *      250ms -> 3.3 秒，正常可玩（诺基亚那代贪吃蛇大约就是这个量级）
+ *  想再快/再慢只改这一个数。 */
+#define GAME_STEP_MS_SNAKE  250U
+
+/* 飞机大战的发射冷却：**每 3 秒才能发射一次**（用户要求）。 */
+#define GAME_FIRE_CD_MS     3000U
+
+/* 结算画面（GAME OVER + SCORE）停留多久再自动回列表。
+ *  原来 1.5 秒 —— 真机反馈"极快就没了"，玩家还没看清分数就回了。改 3 秒。 */
+#define GAME_OVER_HOLD_MS   3000U
+
+static u16 game_step_ms(void)
 {
-    return (s_gameIdx == 0U) ? GAME_STEP_SNAKE : (u8)GAME_FRAME_DIV;
+    return (s_gameIdx == 0U) ? GAME_STEP_MS_SNAKE : (u16)GAME_FRAME_MS;
 }
-
-/* 结算画面停留 150 拍 = 1.5 秒，然后自动回列表 */
-#define GAME_OVER_DIV   150U
 
 /* 【掌机模式的状态变量声明在文件顶部（和 s_alarmEdit 放一起）——
  * 因为 menu_enter() / menu_task_leave() 在文件很靠前的位置就要用它们，
@@ -653,6 +688,13 @@ static void game_start(u8 idx)
     case 1:  Brick_Init();      break;
     default: PlaneGame_Init();  break;
     }
+
+    /* 节拍从"现在"开始算：进游戏先看到静止的初始画面，过一个节拍才动
+     * （否则第一帧立刻推，看着像闪一下）。
+     * s_everFired 清 0 = 飞机大战进游戏就能发射第一轮，不用等冷却。 */
+    s_gameFrameMs = SysTick_Get();
+    s_gameOverMs  = 0;
+    s_everFired   = 0;
 }
 
 /* 推一帧：Update + Draw（Draw 内部会自己调 SPI_OLED_Refresh） */
@@ -671,29 +713,30 @@ static void game_frame(void)
         break;
 
     default:
+        /* 【2026-09-22 用户要求】飞机大战不再自动发射 ——
+         * 改成玩家按"矩阵键盘第四排第二个键"手动发射，每 3 秒一轮、一轮 10 枚。
+         * 原来这里由外壳定时替它发（每 3 帧 = 90ms 一发），那是
+         * "用户当时没指定射击键"的临时办法，现在不需要了。 */
         PlaneGame_Update();
-        /* 【补·必须做】飞机大战原本靠 PLANE_KEY_SHOOT 按键发射子弹，
-         * 而用户只指定了 4 个方向键、没有射击键。
-         * 所以由外壳**定期替它发射**（每 3 帧一发 = 90ms），
-         * 这样不改游戏源码、也不必让某个方向键兼职。
-         * PlaneGame_Shoot() 内部自己会判断状态和空闲弹位，直接调是安全的。 */
-        s_planeShot++;
-        if (s_planeShot >= 3U)
-        {
-            s_planeShot = 0;
-            PlaneGame_Shoot();
-        }
         PlaneGame_Draw();
         break;
     }
+
+    s_gameFrameMs = SysTick_Get();      /* 记下这一帧的时刻 */
 }
 
 /* 强制退出：回"选游戏"列表。清掉局内状态，否则下次进来会停在半局画面上。 */
 static void game_exit(void)
 {
     s_gameState = 0;
-    s_gameCnt   = 0;
-    Display_Refresh(1);
+    s_everFired = 0;
+
+    /* 【2026-09-22】用 0（不清屏）而不是 1：
+     * 下面 main_draw_game_list() 画的每一行都会补空格到满 128 像素
+     * （见 main_draw_line_fit），四行正好覆盖整屏，**不需要先清屏**。
+     * 而"不清屏"还顺带绕开了 Display_Poll 里那道**只对清屏请求生效的
+     * 100ms 限流** —— 列表会立刻出现，不再有"顿一下"的感觉。 */
+    Display_Refresh(0);
 }
 
 /* 游戏是否已结束（三个游戏各有一个 state 变量） */
@@ -718,6 +761,40 @@ static void game_show_over(void)
     }
 }
 
+/*------------------------------------------------------------------------
+ *  飞机大战：发射（含 3 秒冷却）
+ *
+ *  用户要求："第四排第二个按键当作发射子弹，每 3 秒只能发射一次子弹，
+ *            一次子弹为 10 枚"。
+ *
+ *  冷却判据用 s_everFired + s_lastFireMs 两个变量，而不是"当前时刻 - 3000"：
+ *    · 进游戏时 s_everFired = 0 -> 第一次按立刻能发
+ *      （否则开机早期 SysTick 数值还很小，用减法初始化会绕圈、不好读）；
+ *    · 发过之后 s_everFired = 1，之后每次都比"距上次够不够 3 秒"。
+ *
+ *  ※ 冷却放在外壳而不是游戏里：游戏只管"怎么发射"，
+ *    "什么时候允许发射"是外壳的规则（换游戏/换冷却都不用动游戏源码）。
+ *------------------------------------------------------------------------*/
+static void game_fire(void)
+{
+    if (s_gameState != 1U)              /* 只有游玩态能发射 */
+    {
+        return;
+    }
+    if (s_gameIdx != 2U)                /* 只有"飞机大战"有这个动作 */
+    {
+        return;
+    }
+    if (s_everFired && SysTick_Elapsed(s_lastFireMs) < GAME_FIRE_CD_MS)
+    {
+        return;                         /* 还在冷却中 */
+    }
+
+    s_everFired  = 1;
+    s_lastFireMs = SysTick_Get();
+    PlaneGame_Shoot();                  /* 内部一次发 10 枚（见 App_GmPlane.c） */
+}
+
 /* 方向键 -> 游戏输入。
  * 注意打砖块：Brick_MovePaddle() 的参数是**方向增量**（x += dir*3），
  * 而且挡板只左右移动，所以只映射左/右，上/下不理会。 */
@@ -737,9 +814,14 @@ static void game_input(u8 p)
         else if (p == GAME_KEY_RIGHT) { Brick_MovePaddle(1);  }
         break;
 
-    default:    /* 飞机大战：四方向（发射由 game_frame 定期做） */
-        if      (p == GAME_KEY_UP)    { PlaneGame_HandleKey(PLANE_KEY_UP);    }
-        else if (p == GAME_KEY_DOWN)  { PlaneGame_HandleKey(PLANE_KEY_DOWN);  }
+    default:    /* 飞机大战：上/左/右 + 发射 */
+        /* 【2026-09-22 用户要求】第四排第二个键（param 13）在飞机大战里改成**发射**。
+         * 所以飞机这一局没有"下"这个动作 —— 影响很小：飞机初始 y=50，
+         * 屏幕高 64、机身 8 高，本来也只能下移 5 个像素。
+         *
+         * ※ 必须先判发射：13 同时也是 GAME_KEY_DOWN，判反了就变成"往下飞"。 */
+        if      (p == GAME_KEY_FIRE)  { game_fire(); }
+        else if (p == GAME_KEY_UP)    { PlaneGame_HandleKey(PLANE_KEY_UP);    }
         else if (p == GAME_KEY_LEFT)  { PlaneGame_HandleKey(PLANE_KEY_LEFT);  }
         else if (p == GAME_KEY_RIGHT) { PlaneGame_HandleKey(PLANE_KEY_RIGHT); }
         break;
@@ -757,12 +839,18 @@ u8 Menu_GameSel(void)
 }
 
 /*------------------------------------------------------------------------
- *  掌机模式的周期动作 —— 由 TASK_LOGIC 每 10ms 调一次
+ *  掌机模式的周期动作 —— 由 TASK_LOGIC 调用（大约每 10ms 一次）
  *
- *  三件事：
- *    1) **4 个独立按键同时按下 = 强制退出**（用户在游玩态唯一有效的按键操作）
- *    2) 按节拍推一帧游戏
- *    3) 结束检测 + 结算倒计时
+ *  【重要】本函数**不假设自己被调用的频率**：所有节拍都用 g_sysTick 的
+ *  毫秒差判定（见下面每个分支），所以哪怕 TASK_LOGIC 偶尔被拖到 15ms、
+ *  20ms 才转一圈，帧率也不会跟着漂 —— 这是 2026-09-22 把"数拍数"
+ *  换成"算毫秒"的原因，具体背景见本文件节拍宏上方那段。
+ *
+ *  两件事：
+ *    1) 按节拍推一帧游戏
+ *    2) 结束检测 + 结算倒计时
+ *  （强制退出键在 Menu_OnEvent 的游戏分支里处理，见 GAME_KEY_EXIT。
+ *    独立按键在游玩态一律不响应 —— 那是用户要求的。）
  *------------------------------------------------------------------------*/
 void Game_Poll(void)
 {
@@ -775,39 +863,35 @@ void Game_Poll(void)
         return;                     /* 列表态：等按键，不需要周期动作 */
     }
 
-    /* 【2026-09-22 用户要求】退出改成"矩阵键盘第一行第四个键"，
-     * 在 Menu_OnEvent 的游戏分支里处理（见 GAME_KEY_EXIT），
-     * 这里不再检测"4 个独立按键同时按下"。 */
-
-    /* ---- 2) 结算态：停一会儿再回列表 ---- */
+    /* ---- 1) 结算态：停够 GAME_OVER_HOLD_MS 再回列表 ---- */
     if (s_gameState == 2U)
     {
-        s_gameCnt++;
-        if (s_gameCnt >= GAME_OVER_DIV)
+        if (SysTick_Elapsed(s_gameOverMs) >= GAME_OVER_HOLD_MS)
         {
             s_gameState = 0;
-            s_gameCnt   = 0;
-            Display_Refresh(1);
+
+            /* 用 Display_Refresh(0)（不清屏）：列表四行都补满整屏宽，
+             * 不需要清屏；不清屏就不走 Display_Poll 里那道 100ms 限流，
+             * 列表立刻出现 —— 顺带解决了"结算后顿一下才回列表"。 */
+            Display_Refresh(0);
         }
         return;
     }
 
-    /* ---- 3) 游玩态：先看有没有结束 ---- */
+    /* ---- 2) 游玩态：先看有没有结束 ---- */
     if (game_is_over())
     {
         game_show_over();
-        s_gameState = 2U;           /* 进结算态 */
-        s_gameCnt   = 0;
+        s_gameState  = 2U;          /* 进结算态 */
+        s_gameOverMs = SysTick_Get();
         return;
     }
 
-    /* ---- 4) 按节拍推一帧（贪吃蛇节拍更慢，见 GAME_STEP_SNAKE）---- */
-    s_gameCnt++;
-    if (s_gameCnt < game_step_div())
+    /* ---- 3) 按节拍推一帧（贪吃蛇慢、打砖块/飞机快，见 game_step_ms）---- */
+    if (s_gameFrameMs != 0U && SysTick_Elapsed(s_gameFrameMs) < game_step_ms())
     {
-        return;
+        return;                     /* 还没到点 */
     }
-    s_gameCnt = 0;
     game_frame();
 }
 void Menu_CheckIdle(void)
@@ -1464,9 +1548,11 @@ void Menu_OnEvent(const Event_t *evt)
     /*============================================================
      * 掌机模式（"7 游戏"）—— 一个页面、两个状态
      *
-     * 游玩态的规则完全按用户要求：
-     *   · 只认矩阵键盘的方向键；**独立按键全部屏蔽**
-     *     （退出只认"4 键同时按下"，在 Game_Poll 里检测）
+     * 游玩态的规则（按用户要求）：
+     *   · 只认**矩阵键盘**：方向键 + 发射键（只有飞机有）+ 退出键；
+     *     **独立按键全部屏蔽**（含 KEY4 —— 要退出只能按退出键）
+     *   · 退出键 = 矩阵键盘第一行第四个，见 GAME_KEY_EXIT，
+     *     在下面的 case 里比对 evt->param（不是在这里判）
      *   · I2C 副屏关掉（由 sub_redraw() 的 hasContent 判定）
      *============================================================*/
     case PAGE_GAME_HALL:
@@ -1516,10 +1602,15 @@ void Menu_OnEvent(const Event_t *evt)
         case EVT_KEY1:                  /* 新 K2 = 开始玩这个游戏 */
             s_gameIdx   = s_gameSel;
             s_gameState = 1U;
-            s_gameCnt   = 0;
-            s_planeShot = 0;
-            game_start(s_gameIdx);   /* 内含清屏，游戏会自己画第一帧 */
-            Display_Refresh(1);      /* 让副屏按新状态关掉 */
+            /* 节拍时间戳、发射状态由 game_start() 里统一初始化，这里不再逐个数。 */
+            game_start(s_gameIdx);   /* 内含初始化 + 清显存，游戏自己画第一帧 */
+
+            /* 【2026-09-22】参数用 0 而不是 1：
+             * 这一下之后 s_gameState 已经是 1（游玩态），而 main_redraw 在
+             * 游玩态是"一个字都不画、直接 return"——所以传 1 并不会真的清屏，
+             * 唯一的效果是**白白走一道 100ms 限流**，副屏反而关得慢。
+             * 传 0 则不设清屏标志，副屏当拍就关（用户要求"进游戏 I2C 直接关闭"）。 */
+            Display_Refresh(0);
             break;
 
         case EVT_KEY2:                  /* 新 K4 = 回任务清单 */

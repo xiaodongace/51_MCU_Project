@@ -44,12 +44,13 @@
 /* 初始化 GPIO(P3.2/P3.3 I2C + P3.7 中断), I2C 外设 + EXT_INT3 下降沿 */
 void PCF8563_Init(void);
 
-/* 读出 PCF8563 当前时间, 自动 BCD→十进制 + year 解偏移
- * 读到的时间写入 t 指向的结构 */
-void PCF8563_GetTime(Clock_t *t);
+/* 数码管任务可调用此接口获取当前年月日时分秒；year为2000年的偏移量。 */
+/* 成功返回1并将十进制时间写入t，I2C失败返回0；不要在中断中调用。 */
+/* 与I2C OLED共用总线；数码管任务以后周期读取时须与OLED访问互斥。 */
+u8 PCF8563_GetTime(Clock_t *t);
 
-/* 将十进制时间写入 PCF8563, 自动 十进制→BCD + year 偏移编码 */
-void PCF8563_SetTime(const Clock_t *t);
+/* 将十进制时间写入 PCF8563；I2C命令完成返回1，超时返回0。 */
+u8 PCF8563_SetTime(const Clock_t *t);
 
 /* 写入并启用"下一组"闹钟到 PCF8563 硬件寄存器 (写 CS2.AIE=1)
  * 注: PCF8563 只有一套硬件闹钟寄存器, 此函数只负责把一组具体的

@@ -33,6 +33,38 @@ extern void I2C_Unlock(void);
 #define BUS_UNLOCK()
 #endif
 
+/* RTC时间读写使用有界等待，避免I2C异常时卡住菜单任务。 */
+#define RTC_I2C_WAIT_LIMIT  60000U
+
+/* 等待硬件完成当前I2C命令；返回0表示超时。 */
+static u8 RTC_I2C_WaitDone(void) {
+    u16 remaining = RTC_I2C_WAIT_LIMIT;
+
+    while ((I2CMSST & 0x40) == 0) {
+        if (--remaining == 0) return 0;
+    }
+    I2CMSST &= ~0x40;
+    return 1;
+}
+
+/* 执行一条I2C主机命令并检查其是否完成。 */
+static u8 RTC_I2C_Command(u8 command) {
+    I2CMSCR = command;
+    return RTC_I2C_WaitDone();
+}
+
+/* 发送一个字节，并等待原驱动使用的ACK读取命令完成。 */
+static u8 RTC_I2C_SendByte(u8 value) {
+    I2CTXD = value;
+    if (!RTC_I2C_Command(0x02)) return 0;
+    return RTC_I2C_Command(0x03);
+}
+
+/* 事务失败时尝试发出STOP；即使总线仍异常，也会在超时后返回。 */
+static void RTC_I2C_Abort(void) {
+    RTC_I2C_Command(0x06);
+}
+
 /*=====================================================================*/
 /*                        内部静态辅助函数                               */
 /*=====================================================================*/
@@ -142,31 +174,69 @@ static void unpack_bcd(const u8 buf[7], Clock_t *t) {
 /**
  * @brief 读出 PCF8563 当前时间, 自动 BCD→十进制
  */
-void PCF8563_GetTime(Clock_t *t) {
+u8 PCF8563_GetTime(Clock_t *t) {
     u8 buf[7];
+    u8 i;
 
-    if (t == NULL) return;
+    if (t == NULL) return 0;
 
     BUS_LOCK();
-    I2C_ReadNbyte(PCF8563_DEV_ADDR, PCF8563_REG_SEC, buf, 7);
-    BUS_UNLOCK();
+    /* 沿用原I2C驱动的读时序，但每条硬件命令都有超时。 */
+    if (!RTC_I2C_Command(0x01) ||
+        !RTC_I2C_SendByte(PCF8563_DEV_ADDR) ||
+        !RTC_I2C_SendByte(PCF8563_REG_SEC) ||
+        !RTC_I2C_Command(0x01) ||
+        !RTC_I2C_SendByte(PCF8563_DEV_ADDR | 1)) goto read_failed;
 
+    for (i = 0; i < 7; i++) {
+        if (!RTC_I2C_Command(0x04)) goto read_failed;
+        buf[i] = I2CRXD;
+        I2CMSST = (i == 6) ? 0x01 : 0x00;
+        if (!RTC_I2C_Command(0x05)) goto read_failed;
+    }
+
+    if (!RTC_I2C_Command(0x06)) goto read_done;
+    BUS_UNLOCK();
     unpack_bcd(buf, t);
+    return 1;
+
+read_failed:
+    RTC_I2C_Abort();
+read_done:
+    BUS_UNLOCK();
+    return 0;
 }
 
 /**
  * @brief 将十进制时间写入 PCF8563, 自动 十进制→BCD
  */
-void PCF8563_SetTime(const Clock_t *t) {
+u8 PCF8563_SetTime(const Clock_t *t) {
     u8 buf[7];
+    u8 i;
 
-    if (t == NULL) return;
+    if (t == NULL) return 0;
 
     pack_bcd(t, buf);
 
     BUS_LOCK();
-    I2C_WriteNbyte(PCF8563_DEV_ADDR, PCF8563_REG_SEC, buf, 7);
+    /* 沿用原I2C驱动的写时序，失败时不继续发送后续字节。 */
+    if (!RTC_I2C_Command(0x01) ||
+        !RTC_I2C_SendByte(PCF8563_DEV_ADDR) ||
+        !RTC_I2C_SendByte(PCF8563_REG_SEC)) goto write_failed;
+
+    for (i = 0; i < 7; i++) {
+        if (!RTC_I2C_SendByte(buf[i])) goto write_failed;
+    }
+
+    if (!RTC_I2C_Command(0x06)) goto write_done;
     BUS_UNLOCK();
+    return 1;
+
+write_failed:
+    RTC_I2C_Abort();
+write_done:
+    BUS_UNLOCK();
+    return 0;
 }
 
 /*---------------------------------------------------------------------*/

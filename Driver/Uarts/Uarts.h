@@ -20,5 +20,17 @@
 */
 void Uarts_Init(unsigned char uartMask);
 
+/* 在RTX51任务上下文处理完整Cube-ISP RTC帧并写入PCF8563。 */
+u8 Uarts_RtcSyncProcess(void);
+
+/* 对时状态：0=等待，1=成功，2=时间无效，3=回读不匹配，5/6=写入/读回失败。 */
+#define UART_RTC_SYNC_WAITING         0
+#define UART_RTC_SYNC_OK              1
+#define UART_RTC_SYNC_INVALID_TIME    2
+#define UART_RTC_SYNC_VERIFY_FAILED   3
+#define UART_RTC_SYNC_WRITE_FAILED    5
+#define UART_RTC_SYNC_READBACK_FAILED 6
+extern volatile u8 Uarts_RtcSyncLastStatus;
+
 
 #endif

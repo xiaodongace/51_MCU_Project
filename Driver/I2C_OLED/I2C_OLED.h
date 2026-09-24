@@ -4,10 +4,7 @@
 #include "Config.h"
 
  
-#define  u8 unsigned char 
-#define  u16 unsigned int
-#define  u32 unsigned int
-	
+
 #define I2C_OLED_CMD  0	//Ğ´ÃüÁî
 #define I2C_OLED_DATA 1	//Ğ´Êı¾İ
 
